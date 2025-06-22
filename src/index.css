@@ -1,0 +1,282 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Open+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+
+    --sidebar-width: 16rem;
+    --sidebar-collapsed-width: 6rem;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 10% 3.9%;
+
+    --radius: 0.5rem;
+
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 240 5.9% 90%;
+    --sidebar-ring: 240 5.9% 10%;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 4.8% 18%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 94.1%;
+    --sidebar-primary-foreground: 220.9 39.3% 11%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-montserrat font-semibold;
+  }
+}
+
+@layer components {
+  .container-section {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24;
+  }
+
+  .container-fluid {
+    @apply w-full max-w-none px-0 mx-0;
+  }
+
+  .heading-xl {
+    @apply text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight;
+  }
+
+  .heading-lg {
+    @apply text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight;
+  }
+
+  .heading-md {
+    @apply text-xl md:text-2xl lg:text-3xl font-bold tracking-tight;
+  }
+
+  .heading-sm {
+    @apply text-lg md:text-xl lg:text-2xl font-bold tracking-tight;
+  }
+
+  .paragraph {
+    @apply text-base md:text-lg leading-relaxed text-gray-600;
+  }
+
+  .btn-primary {
+    @apply bg-homeo-accent hover:bg-opacity-90 transition-all text-white font-medium py-3 px-6 rounded-md shadow-md;
+  }
+
+  .btn-secondary {
+    @apply bg-homeo-blue hover:bg-homeo-blue-dark transition-all text-white font-medium py-3 px-6 rounded-md shadow-md;
+  }
+
+  .feature-card {
+    @apply bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all;
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-homeo-green to-homeo-blue;
+  }
+
+  .gradient-border {
+    position: relative;
+  }
+
+  .gradient-border::after {
+    content: '';
+    @apply absolute left-0 bottom-0 w-1/3 h-1 bg-gradient-to-r from-homeo-green to-homeo-blue rounded;
+  }
+
+  /* Scrollbar personalizada */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+
+  .scrollbar-thumb-accent {
+    scrollbar-color: hsl(var(--accent)) transparent;
+  }
+
+  .scrollbar-track-transparent {
+    scrollbar-color: transparent transparent;
+  }
+
+  /* Webkit scrollbar para Chrome/Safari */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--accent));
+    border-radius: 3px;
+    border: 1px solid transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--accent-foreground) / 0.5);
+  }
+
+  /* Animações do Sidebar */
+  .sidebar-item {
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  .sidebar-item:hover {
+    @apply transform translate-x-1;
+  }
+
+  .sidebar-collapse-animation {
+    @apply transition-all duration-300 ease-in-out;
+  }
+
+  /* Estados de foco melhorados */
+  .sidebar-menu-button {
+    @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none;
+  }
+
+  /* Melhorias visuais para o dropdown */
+  .sidebar-dropdown-content {
+    @apply animate-in slide-in-from-top-2 duration-200;
+  }
+
+  /* Hover effects melhorados */
+  .sidebar-item-hover {
+    @apply hover:bg-accent/80 hover:text-accent-foreground transition-colors duration-150;
+  }
+
+  /* Badge styles */
+  .sidebar-badge {
+    @apply animate-pulse;
+  }
+
+  /* Logo animations */
+  .logo-transition {
+    @apply transition-all duration-300 ease-in-out;
+  }
+
+  /* User section enhancements */
+  .user-section {
+    @apply backdrop-blur-sm bg-background/80;
+  }
+
+  /* Mobile specific improvements */
+  @media (max-width: 768px) {
+    .mobile-sidebar {
+      @apply backdrop-blur-md;
+    }
+  }
+
+  /* Dark mode specific adjustments */
+  .dark .sidebar-glass {
+    @apply backdrop-blur-xl bg-background/60 border-border/50;
+  }
+
+  /* Accessibility improvements */
+  .sidebar-item[aria-current="page"] {
+    @apply bg-accent text-accent-foreground font-medium;
+  }
+
+  .sidebar-item:focus-visible {
+    @apply ring-2 ring-ring ring-offset-2 outline-none;
+  }
+
+  /* Tooltip enhancements */
+  .sidebar-tooltip {
+    @apply backdrop-blur-sm bg-popover/90 border border-border/50;
+  }
+
+  /* Enhanced separators */
+  .sidebar-separator {
+    @apply bg-gradient-to-r from-transparent via-border to-transparent;
+  }
+}

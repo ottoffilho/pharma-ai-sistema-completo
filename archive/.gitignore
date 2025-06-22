@@ -1,0 +1,16 @@
+# Pasta Archive - Scripts e arquivos de migração temporários
+# Estes arquivos não devem ser commitados, mas mantidos localmente para referência
+
+# Scripts de limpeza e migração
+*.sql
+*.py
+*.js
+*.json
+
+# Documentação temporária
+*.md
+
+# Arquivos de dados temporários
+*.csv
+*.xml
+*.pdf 

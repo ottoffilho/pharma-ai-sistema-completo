@@ -1,0 +1,66 @@
+<prompt>
+  <title>Uniformizar UI da página DetalhesNotaFiscal</title>
+  <summary>Aplicar o mesmo padrão visual/UX da página de detalhes de Cliente em src/pages/admin/clientes/[id]/index.tsx à página de detalhes da Nota Fiscal em src/pages/admin/fiscal/nota-fiscal/[id].tsx.</summary>
+
+<context>
+    <stack>
+      <frontend>React 18 + Vite + TypeScript</frontend>
+      <components>shadcn/ui (Card, Tabs, Badge, etc.)</components>
+      <layout>AdminLayout (header, breadcrumbs, conteúdo central)</layout>
+    </stack>
+    <design_tokens>
+      Tailwind + Variantes de cor já usadas na página de Cliente (gradientes suaves, bg-*-100, dark:bg-*-900/30)</design_tokens>
+    <reference_page>src/pages/admin/clientes/[id]/index.tsx</reference_page>
+    <target_page>src/pages/admin/fiscal/nota-fiscal/[id].tsx</target_page>
+  </context>
+
+<goals>
+    <goal>Reaproveitar cabeçalho com título grande, subtítulo e botões de ação (Voltar, Editar, Processar NF).</goal>
+    <goal>Incluir Badge de status com ícone (PROCESSADA, CANCELADA, PENDENTE) usando classes bg-emerald/red/yellow análogas.</goal>
+    <goal>Organizar informações gerais da NF em Cards (Dados Gerais, Totais Financeiros, Impostos, Fornecedor).</goal>
+    <goal>Adicionar Tabs para separar: "Visão Geral" (cards resumidos), "Itens" (tabela), "XML / PDF" (links de download), "Log / Histórico" (timeline).</goal>
+    <goal>Manter animações de loading (Skeleton + ícones animados) padronizadas.</goal>
+    <goal>Aplicar sombreados (shadow-lg) e remover bordas padrão (border-0) tal como na página de Cliente.</goal>
+    <goal>Usar ícones Lucide correspondentes (FileText, Package, Truck, Hash, Calendar, DollarSign, BarChart3).</goal>
+  </goals>
+
+<acceptance_criteria>
+<criterion>Layout responsivo sem scroll horizontal em 1280px-wide
+viewport.</criterion>
+<criterion>100 % TypeScript strict (nenhum any novo).</criterion>
+<criterion>Página mantém funcionalidade existente (fetch NF, processar NF) sem
+regressões.</criterion>
+<criterion>Lighthouse acessibilidade ≥ 90.</criterion> </acceptance_criteria>
+
+<implementation_steps>
+<step>Crie componente <NotaFiscalHeader/> contendo botão de voltar, título,
+subtítulo (nº NF e série) e Badge de status.</step>
+<step>Refatore DetalhesNotaFiscal para usar <Tabs> com valores: overview, itens,
+documentos, historico.</step>
+<step>Na aba overview renderize quatro <Card> tal como Cliente: Dados Gerais,
+Totais, Impostos, Fornecedor.</step>
+<step>Na aba itens reuse tabela existente, mas envolta em Card shadow-lg.</step>
+<step>Na aba documentos coloque links de download de XML e PDF, cada um em Card
+com ícone FileText/Download.</step>
+<step>Na aba historico gere timeline simples (created_at, updated_at,
+processada_em).</step>
+<step>Extraia funções helpers (formatCurrency, formatDate, getStatusIcon) para
+util file if not exists.</step>
+<step>Teste unitário básico que renderiza skeleton loading e depois dados
+mockados usando vitest/react-testing.</step> </implementation_steps>
+
+<tips>
+    <tip>Copie utilitários de formatação utilizados na página de Cliente para evitar duplicação.</tip>
+    <tip>Para cores use classes existentes; evite definir estilos inline.</tip>
+    <tip>Garanta ordenação por numero_item na tabela de itens.</tip>
+    <tip>Para timeline, use ícones e cores semelhantes à linha do tempo do Cliente.</tip>
+  </tips>
+
+<deliverables>
+    <file>src/pages/admin/fiscal/nota-fiscal/[id].tsx (refatorado)</file>
+    <file>src/components/notaFiscal/NotaFiscalHeader.tsx (novo)</file>
+    <file>src/components/notaFiscal/NotaFiscalCards.tsx (novo, agrega 4 cards)</file>
+    <file>tests/unit/nota-fiscal-detalhes.test.tsx (novo)</file>
+    <note>Sem alterações em rotas; somente UI.</note>
+  </deliverables>
+</prompt>
