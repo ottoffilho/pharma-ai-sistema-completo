@@ -104,6 +104,7 @@ import EditarEmbalagemPage from "./pages/admin/estoque/embalagens/editar";
 import DetalhesNotaFiscalPage from "./pages/admin/fiscal/nota-fiscal/[id]";
 import FiscalOverviewPage from "./pages/admin/fiscal/index";
 import DiagnosticoXMLPage from "./pages/admin/fiscal/diagnostico-xml";
+import WhatsAppDashboard from "./pages/admin/whatsapp/index";
 
 const queryClient = new QueryClient();
 
@@ -423,6 +424,9 @@ const App = (): JSX.Element => {
                             <Route path="fiscal" element={<FiscalOverviewPage />} />
                             <Route path="fiscal/nota-fiscal/:id" element={<DetalhesNotaFiscalPage />} />
                             <Route path="fiscal/diagnostico-xml" element={<DiagnosticoXMLPage />} />
+                            
+                            {/* Rota do WhatsApp */}
+                            <Route path="whatsapp" element={<WhatsAppDashboard />} />
                             
                             {/* Dashboard principal (roteamento automático) */}
                             <Route path="" element={<DashboardRouter />} />

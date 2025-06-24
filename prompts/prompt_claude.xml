@@ -1,66 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <prompt>
-  <title>Uniformizar UI da página DetalhesNotaFiscal</title>
-  <summary>Aplicar o mesmo padrão visual/UX da página de detalhes de Cliente em src/pages/admin/clientes/[id]/index.tsx à página de detalhes da Nota Fiscal em src/pages/admin/fiscal/nota-fiscal/[id].tsx.</summary>
+  <!--
+    Este prompt instrui o Claude Code a implementar todo o fluxo de Atendimento via WhatsApp
+    descrito no arquivo arquitetura_whatsapp.md. O modelo DEVE utilizar SEMPRE o conjunto de
+    comandos MCP do Supabase (mcp_supabase_*) para criação de tabelas, RLS, Edge Functions,
+    migrações e deploy. O objetivo é gerar um PR completo e funcional.
+  -->
 
-<context>
-    <stack>
-      <frontend>React 18 + Vite + TypeScript</frontend>
-      <components>shadcn/ui (Card, Tabs, Badge, etc.)</components>
-      <layout>AdminLayout (header, breadcrumbs, conteúdo central)</layout>
-    </stack>
-    <design_tokens>
-      Tailwind + Variantes de cor já usadas na página de Cliente (gradientes suaves, bg-*-100, dark:bg-*-900/30)</design_tokens>
-    <reference_page>src/pages/admin/clientes/[id]/index.tsx</reference_page>
-    <target_page>src/pages/admin/fiscal/nota-fiscal/[id].tsx</target_page>
+  <context>
+    <projeto>Pharma.AI – Sistema de Farmácia de Manipulação</projeto>
+    <objetivo>
+      Implementar atendimento híbrido WhatsApp (IA + Atendente) com integração oficial Meta Cloud API,
+      orçamentos automáticos de receita, SLA, métricas e automações n8n.
+    </objetivo>
+    <estadoAtual>
+      Tabelas existentes: conversas_atendimento, mensagens_atendimento, templates_resposta.
+      Edge Function existente: enviar-mensagem-whatsapp (mock).
+      Front-end: Hook useWhatsApp, página admin/whatsapp, RPC buscar_conversas_whatsapp.
+    </estadoAtual>
   </context>
 
-<goals>
-    <goal>Reaproveitar cabeçalho com título grande, subtítulo e botões de ação (Voltar, Editar, Processar NF).</goal>
-    <goal>Incluir Badge de status com ícone (PROCESSADA, CANCELADA, PENDENTE) usando classes bg-emerald/red/yellow análogas.</goal>
-    <goal>Organizar informações gerais da NF em Cards (Dados Gerais, Totais Financeiros, Impostos, Fornecedor).</goal>
-    <goal>Adicionar Tabs para separar: "Visão Geral" (cards resumidos), "Itens" (tabela), "XML / PDF" (links de download), "Log / Histórico" (timeline).</goal>
-    <goal>Manter animações de loading (Skeleton + ícones animados) padronizadas.</goal>
-    <goal>Aplicar sombreados (shadow-lg) e remover bordas padrão (border-0) tal como na página de Cliente.</goal>
-    <goal>Usar ícones Lucide correspondentes (FileText, Package, Truck, Hash, Calendar, DollarSign, BarChart3).</goal>
-  </goals>
+  <requisitosGerais>
+    <linguagens>TypeScript estrito, Deno para Edge, SQL Postgres 15.</linguagens>
+    <padrões>Seguir regras de código Pharma.AI (interfaces, React Query, RLS, 98 % TS coverage).</padrões>
+    <supabase>MCP obrigatório para TODAS as ações (criação de tabelas, RLS, funções, deploy).</supabase>
+  </requisitosGerais>
 
-<acceptance_criteria>
-<criterion>Layout responsivo sem scroll horizontal em 1280px-wide
-viewport.</criterion>
-<criterion>100 % TypeScript strict (nenhum any novo).</criterion>
-<criterion>Página mantém funcionalidade existente (fetch NF, processar NF) sem
-regressões.</criterion>
-<criterion>Lighthouse acessibilidade ≥ 90.</criterion> </acceptance_criteria>
+  <tarefasBackend>
+    <edgeFunctions>
+      <function name="webhook-whatsapp-inbound">
+        <descricao>Receber webhooks da Meta, validar assinatura, criar/atualizar conversa, inserir mensagem, publicar Realtime.</descricao>
+      </function>
+      <function name="enviar-mensagem-whatsapp">
+        <descricao>Atualizar função existente para envio real via Meta Cloud API, tratamento de mídia, erros e atualização de status.</descricao>
+      </function>
+      <function name="processar-receita-ai">
+        <descricao>Receber imagem de receita, executar OCR + LLM, gerar JSON da fórmula.</descricao>
+      </function>
+      <function name="validar-orcamento">
+        <descricao>Permitir atendente confirmar ou ajustar valor; atualizar tabela orcamentos e disparar mensagem ao cliente.</descricao>
+      </function>
+      <function name="co-pilot-sugestoes" optional="true">
+        <descricao>Gerar respostas sugeridas em tempo real para o atendente.</descricao>
+      </function>
+    </edgeFunctions>
 
-<implementation_steps>
-<step>Crie componente <NotaFiscalHeader/> contendo botão de voltar, título,
-subtítulo (nº NF e série) e Badge de status.</step>
-<step>Refatore DetalhesNotaFiscal para usar <Tabs> com valores: overview, itens,
-documentos, historico.</step>
-<step>Na aba overview renderize quatro <Card> tal como Cliente: Dados Gerais,
-Totais, Impostos, Fornecedor.</step>
-<step>Na aba itens reuse tabela existente, mas envolta em Card shadow-lg.</step>
-<step>Na aba documentos coloque links de download de XML e PDF, cada um em Card
-com ícone FileText/Download.</step>
-<step>Na aba historico gere timeline simples (created_at, updated_at,
-processada_em).</step>
-<step>Extraia funções helpers (formatCurrency, formatDate, getStatusIcon) para
-util file if not exists.</step>
-<step>Teste unitário básico que renderiza skeleton loading e depois dados
-mockados usando vitest/react-testing.</step> </implementation_steps>
+    <tabelasSQL>
+      <tabela name="orcamentos">
+        <campos>id UUID PK, conversa_id FK, json_receita JSONB, valor_estimado NUMERIC(10,2), valor_final NUMERIC(10,2), status ENUM('provisorio','validado','enviado'), created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ</campos>
+      </tabela>
+      <tabela name="eventos_whatsapp">
+        <campos>id UUID PK, mensagem_id FK, evento VARCHAR, timestamp TIMESTAMPTZ</campos>
+      </tabela>
+      <tabela name="fila_conversas">
+        <campos>id UUID PK, conversa_id FK, status VARCHAR, posicao INT, atribulada_a UUID</campos>
+      </tabela>
+      <alterar name="conversas_atendimento">
+        <addColumn>sla_expira_em TIMESTAMPTZ, canal VARCHAR DEFAULT 'whatsapp'</addColumn>
+      </alterar>
+    </tabelasSQL>
 
-<tips>
-    <tip>Copie utilitários de formatação utilizados na página de Cliente para evitar duplicação.</tip>
-    <tip>Para cores use classes existentes; evite definir estilos inline.</tip>
-    <tip>Garanta ordenação por numero_item na tabela de itens.</tip>
-    <tip>Para timeline, use ícones e cores semelhantes à linha do tempo do Cliente.</tip>
-  </tips>
+    <rlsPolicies>
+      Atendente só acessa quando atendente_id = auth.uid() ou status = 'aberto'; Supervisores via claim nivel_acesso = 'supervisor'. Use mcp_supabase_apply_migration para definir.
+    </rlsPolicies>
 
-<deliverables>
-    <file>src/pages/admin/fiscal/nota-fiscal/[id].tsx (refatorado)</file>
-    <file>src/components/notaFiscal/NotaFiscalHeader.tsx (novo)</file>
-    <file>src/components/notaFiscal/NotaFiscalCards.tsx (novo, agrega 4 cards)</file>
-    <file>tests/unit/nota-fiscal-detalhes.test.tsx (novo)</file>
-    <note>Sem alterações em rotas; somente UI.</note>
-  </deliverables>
+    <realtimeChannels>whatsapp_conversas, whatsapp_mensagens</realtimeChannels>
+  </tarefasBackend>
+
+  <tarefasFrontend>
+    <hooks>
+      Atualizar useWhatsApp para usar Realtime subscribe; fallback polling.
+    </hooks>
+    <pages>
+      • Nova aba "Orçamentos Pendentes" no painel whatsapp.  
+      • UI de validação (editar preço, ESTOQUE, prazo).
+    </pages>
+  </tarefasFrontend>
+
+  <automacoesN8N>
+    <workflow name="Alerta SLA" descricao="cron 5 min → SQL → Slack" />
+    <workflow name="Pesquisa CSAT" descricao="webhook → wait 15 min → Meta template" />
+    <workflow name="Backup Receitas" descricao="cron diário → Storage → S3 Glacier" />
+    <!-- Exportar JSON para infra/automacoes-n8n -->
+  </automacoesN8N>
+
+  <metricas>
+    FRT, ART, CSAT, FRT-IA, Taxa de Desistência IA, % Orçamentos sem ajuste.
+  </metricas>
+
+  <guidelinesSupabase>
+    • Sempre utilize chamadas mcp_supabase_* para criar tabelas, RLS, migrar e fazer deploy.  
+    • Edge Functions compiladas e publicadas via mcp_supabase_deploy_edge_function.  
+    • Versionamento de migrações em pasta supabase/migrations.
+  </guidelinesSupabase>
+
+  <entregaveis>
+    1. Código completo (Edge, React, SQL) pronto para `pnpm dev` e `supabase functions serve`.  
+    2. Scripts MCP de migração e deploy.  
+    3. Arquivos JSON dos workflows n8n.  
+    4. README passo a passo.
+  </entregaveis>
+
+  <modoOperacao>
+    Claude deverá gerar PR incremental, explicando cada commit. Utilize comentários em português.
+  </modoOperacao>
 </prompt>

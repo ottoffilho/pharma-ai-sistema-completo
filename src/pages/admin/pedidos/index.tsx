@@ -16,7 +16,8 @@ import {
   BarChart3,
   TrendingUp,
   CreditCard,
-  User
+  User,
+  MessageCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,7 +44,7 @@ interface PedidoFeatureCard {
 const pedidoFeatures: PedidoFeatureCard[] = [
   {
     title: 'Listagem de Pedidos',
-    description: 'Visualize todos os pedidos da farmácia, com filtros avançados e acompanhamento de status.',
+    description: 'Visualize todos os pedidos da farmácia, com filtros avançados e acompanhamento de status atual.',
     icon: <ClipboardList className="h-6 w-6" />,
     href: '/admin/pedidos/listar',
     stats: [],
@@ -70,6 +71,18 @@ const pedidoFeatures: PedidoFeatureCard[] = [
     stats: [],
     status: 'ativo',
     gradient: 'from-purple-500 to-pink-500'
+  },
+  {
+    title: 'Atendimento WhatsApp',
+    description: 'Central de atendimento integrada com WhatsApp. Gerencie conversas, templates e automação com IA.',
+    icon: <MessageCircle className="h-6 w-6" />,
+    href: '/admin/whatsapp',
+    stats: [
+      { label: 'Conversas ativas', value: '12', trend: 'up' },
+      { label: 'IA integrada', value: 'Ativo', trend: 'stable' }
+    ],
+    status: 'ativo',
+    gradient: 'from-green-500 to-emerald-500'
   },
   {
     title: 'Entrega e Rastreamento',
@@ -313,7 +326,7 @@ export default function PedidosOverview() {
         {/* Features Grid */}
         <div className="px-6 pb-16">
           <div className="mx-auto max-w-7xl">
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
               {updatedPedidoFeatures.map((feature, index) => {
                 const CardContentWrapper = (
                   <Card 
