@@ -38,11 +38,12 @@ export function useEstoqueCards() {
 
         if (produtosError) throw produtosError;
 
-        // 2. Buscar dados de embalagens
+        // 2. Buscar dados de embalagens (agora na tabela unificada 'produtos')
         const { data: embalagens, error: embalagensError } = await supabase
-          .from('embalagens')
-          .select('id, estoque_atual, preco_unitario')
-          .eq('ativo', true);
+          .from('produtos')
+          .select('id, estoque_atual, preco_custo, tipo')
+          .eq('tipo', 'EMBALAGEM')
+          .eq('is_deleted', false);
 
         if (embalagensError) throw embalagensError;
 
@@ -79,8 +80,8 @@ export function useEstoqueCards() {
 
         // Calcular métricas de embalagens
         const totalEmbalagens = embalagens?.length || 0;
-        const valorTotalEmbalagens = embalagens?.reduce((sum, e) => 
-          sum + (e.estoque_atual * (e.preco_unitario || 0)), 0
+        const valorTotalEmbalagens = embalagens?.reduce((sum, e: any) => 
+          sum + (e.estoque_atual * (e.preco_custo || 0)), 0
         ) || 0;
 
         // Calcular métricas de lotes

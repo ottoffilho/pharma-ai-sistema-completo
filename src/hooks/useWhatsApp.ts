@@ -1,7 +1,28 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/hooks/use-toast';
+import type { Database, Tables } from '@/integrations/supabase/types';
+
+// =====================================================
+// TIPOS DE TABELAS DO BANCO DE DADOS
+// =====================================================
+
+type ConversaAtendimentoRow = Tables<'conversas_atendimento'>;
+type MensagemAtendimentoRow = Tables<'mensagens_atendimento'>;
+type TemplateRespostaRow = Tables<'templates_resposta'>;
+
+// Tipo específico para a query de mensagens para cálculo de métricas
+type MensagemParaCalculoRow = {
+  conversa_id: string;
+  remetente_tipo: string;
+  enviada_em: string | null;
+  created_at: string | null;
+};
+
+// =====================================================
+// INTERFACES E TIPOS
+// =====================================================
 
 export interface ConversaWhatsApp {
   id: string;
@@ -33,14 +54,15 @@ export interface MensagemWhatsApp {
   arquivo_nome?: string;
   whatsapp_message_id?: string;
   timestamp: string;
-  lida: boolean;
-  entregue: boolean;
+  status_leitura: 'nao_lida' | 'lida' | 'erro';
+  lida: boolean; // Campo computado baseado no status_leitura
+  entregue: boolean; // Campo computado baseado no status_leitura
   created_at: string;
 }
 
 export interface TemplateResposta {
   id: string;
-  nome: string;
+  titulo: string;
   categoria: 'saudacao' | 'orcamento' | 'agendamento' | 'informacao' | 'confirmacao' | 'outro';
   conteudo: string;
   variaveis?: string[];
@@ -61,6 +83,10 @@ export interface MetricasWhatsApp {
   clientes_ativos: number;
 }
 
+// =====================================================
+// HOOK PRINCIPAL
+// =====================================================
+
 export const useWhatsApp = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -76,30 +102,59 @@ export const useWhatsApp = () => {
     return useQuery({
       queryKey: ['conversas-whatsapp', filtros],
       queryFn: async (): Promise<ConversaWhatsApp[]> => {
-        // Usar a função otimizada do banco
-        const { data, error } = await supabase.rpc('buscar_conversas_whatsapp', {
-          p_status: filtros?.status === 'todos' ? null : filtros?.status,
-          p_busca: filtros?.busca || null,
-          p_limit: filtros?.limite || 50,
-          p_offset: filtros?.offset || 0
-        });
+        try {
+          // Consulta tipada usando a interface Database
+          let query = supabase
+            .from('conversas_atendimento')
+            .select('*')
+            .order('updated_at', { ascending: false });
 
-        if (error) {
-          console.error('Erro ao buscar conversas:', error);
-          throw new Error('Erro ao carregar conversas');
+          // Aplicar filtros
+          if (filtros?.status && filtros.status !== 'todos') {
+            query = query.eq('status', filtros.status);
+          }
+
+          if (filtros?.busca) {
+            query = query.or(`cliente_nome.ilike.%${filtros.busca}%,cliente_telefone.ilike.%${filtros.busca}%`);
+          }
+
+          if (filtros?.limite) {
+            query = query.limit(filtros.limite);
+          }
+
+          if (filtros?.offset) {
+            query = query.range(filtros.offset, (filtros.offset + (filtros.limite || 50)) - 1);
+          }
+
+          const { data, error } = await query;
+
+          if (error) {
+            console.error('Erro ao buscar conversas:', error);
+            throw new Error('Erro ao carregar conversas');
+          }
+
+          // Mapear dados para interface esperada usando tipos corretos
+          return (data || []).map((conversa: ConversaAtendimentoRow): ConversaWhatsApp => ({
+            id: conversa.id,
+            cliente_id: conversa.cliente_id || undefined,
+            cliente_nome: conversa.cliente_nome || '',
+            cliente_telefone: conversa.cliente_telefone,
+            status: (conversa.status || 'aberto') as 'aberto' | 'em_atendimento' | 'aguardando_cliente' | 'resolvido' | 'cancelado',
+            prioridade: (conversa.prioridade || 'media') as 'baixa' | 'media' | 'alta' | 'urgente',
+            atendente_id: conversa.atendente_id || undefined,
+            atendente_nome: conversa.atendente_nome || undefined,
+            ultima_mensagem: undefined, // Será calculado separadamente se necessário
+            ultima_mensagem_data: conversa.ultima_mensagem_at || undefined,
+            mensagens_nao_lidas: 0, // Será calculado separadamente se necessário
+            tags: conversa.tags || [],
+            observacoes: conversa.observacoes_internas || undefined,
+            created_at: conversa.created_at || '',
+            updated_at: conversa.updated_at || ''
+          }));
+        } catch (error) {
+          console.error('Erro na consulta de conversas:', error);
+          throw error;
         }
-
-        // Mapear dados para interface esperada
-        return (data || []).map((conversa: any) => ({
-          ...conversa,
-          cliente: conversa.cliente_email ? {
-            id: conversa.cliente_id,
-            nome: conversa.cliente_nome,
-            telefone: conversa.cliente_telefone
-          } : null,
-          ultima_mensagem: conversa.ultima_mensagem_conteudo,
-          mensagens_nao_lidas: conversa.mensagens_nao_lidas
-        }));
       },
       refetchInterval: 30000, // Atualiza a cada 30 segundos
     });
@@ -112,23 +167,39 @@ export const useWhatsApp = () => {
       queryFn: async (): Promise<MensagemWhatsApp[]> => {
         if (!conversaId) return [];
 
-        const { data, error } = await supabase
-          .from('mensagens_atendimento')
-          .select('*')
-          .eq('conversa_id', conversaId)
-          .order('enviada_em', { ascending: true });
+        try {
+          const { data, error } = await supabase
+            .from('mensagens_atendimento')
+            .select('*')
+            .eq('conversa_id', conversaId)
+            .order('enviada_em', { ascending: true });
 
-        if (error) {
-          console.error('Erro ao buscar mensagens:', error);
-          throw new Error('Erro ao carregar mensagens');
+          if (error) {
+            console.error('Erro ao buscar mensagens:', error);
+            throw new Error('Erro ao carregar mensagens');
+          }
+
+          return (data || []).map((msg: MensagemAtendimentoRow): MensagemWhatsApp => ({
+            id: msg.id,
+            conversa_id: msg.conversa_id,
+            remetente_tipo: msg.remetente_tipo as 'cliente' | 'atendente' | 'sistema',
+            remetente_id: msg.remetente_id || undefined,
+            remetente_nome: msg.remetente_nome || '',
+            conteudo: msg.conteudo,
+            tipo_mensagem: (msg.tipo_mensagem || 'texto') as 'texto' | 'imagem' | 'documento' | 'audio' | 'video' | 'localizacao',
+            arquivo_url: msg.arquivo_url || undefined,
+            arquivo_nome: msg.arquivo_nome || undefined,
+            whatsapp_message_id: undefined, // Campo não presente na tabela
+            timestamp: msg.enviada_em || msg.created_at || '',
+            status_leitura: msg.status_leitura as 'nao_lida' | 'lida' | 'erro',
+            lida: msg.status_leitura === 'lida',
+            entregue: msg.status_leitura !== 'erro',
+            created_at: msg.created_at || ''
+          }));
+        } catch (error) {
+          console.error('Erro na consulta de mensagens:', error);
+          throw error;
         }
-
-        return (data || []).map(msg => ({
-          ...msg,
-          timestamp: msg.enviada_em,
-          lida: msg.status_leitura === 'lida',
-          entregue: msg.status_leitura !== 'erro'
-        }));
       },
       enabled: !!conversaId,
       refetchInterval: 5000, // Atualiza a cada 5 segundos
@@ -140,18 +211,34 @@ export const useWhatsApp = () => {
     return useQuery({
       queryKey: ['templates-whatsapp'],
       queryFn: async (): Promise<TemplateResposta[]> => {
-        const { data, error } = await supabase
-          .from('templates_resposta')
-          .select('*')
-          .eq('ativo', true)
-          .order('categoria', { ascending: true });
+        try {
+          const { data, error } = await supabase
+            .from('templates_resposta')
+            .select('*')
+            .eq('ativo', true)
+            .order('categoria', { ascending: true });
 
-        if (error) {
-          console.error('Erro ao buscar templates:', error);
-          throw new Error('Erro ao carregar templates');
+          if (error) {
+            console.error('Erro ao buscar templates:', error);
+            throw new Error('Erro ao carregar templates');
+          }
+
+          return (data || []).map((template: TemplateRespostaRow): TemplateResposta => ({
+            id: template.id,
+            titulo: template.titulo,
+            categoria: (template.categoria || 'outro') as 'saudacao' | 'orcamento' | 'agendamento' | 'informacao' | 'confirmacao' | 'outro',
+            conteudo: template.conteudo,
+            variaveis: [],
+            ativo: template.ativo !== false,
+            uso_automatico: false,
+            condicoes_uso: undefined,
+            created_at: template.created_at || '',
+            updated_at: template.updated_at || ''
+          }));
+        } catch (error) {
+          console.error('Erro na consulta de templates:', error);
+          throw error;
         }
-
-        return data || [];
       },
     });
   };
@@ -161,343 +248,156 @@ export const useWhatsApp = () => {
     return useQuery({
       queryKey: ['metricas-whatsapp'],
       queryFn: async (): Promise<MetricasWhatsApp> => {
-        // Buscar métricas agregadas
-        const hoje = new Date().toISOString().split('T')[0];
+        try {
+          // Buscar métricas agregadas
+          const hoje = new Date().toISOString().split('T')[0];
 
-        const [
-          conversasAbertas,
-          conversasEmAtendimento,
-          conversasHoje,
-          mensagensHoje,
-        ] = await Promise.all([
-          supabase
-            .from('conversas_atendimento')
-            .select('id', { count: 'exact' })
-            .eq('status', 'aberto'),
-          
-          supabase
-            .from('conversas_atendimento')
-            .select('id', { count: 'exact' })
-            .eq('status', 'em_atendimento'),
-          
-          supabase
-            .from('conversas_atendimento')
-            .select('id', { count: 'exact' })
-            .gte('created_at', hoje),
-          
-          supabase
-            .from('mensagens_atendimento')
-            .select('id', { count: 'exact' })
-            .gte('enviada_em', hoje),
-        ]);
+          const resultados = await Promise.allSettled([
+            // Queries básicas para contagem
+            supabase
+              .from('conversas_atendimento')
+              .select('id', { count: 'exact' })
+              .eq('status', 'aberto'),
+            
+            supabase
+              .from('conversas_atendimento')
+              .select('id', { count: 'exact' })
+              .eq('status', 'em_atendimento'),
+            
+            supabase
+              .from('conversas_atendimento')
+              .select('id', { count: 'exact' })
+              .gte('created_at', hoje),
+            
+            supabase
+              .from('mensagens_atendimento')
+              .select('id', { count: 'exact' })
+              .gte('enviada_em', hoje),
 
-        // Calcular tempo médio de resposta real
-        const tempoMedioResposta = await calcularTempoMedioResposta();
+            // Queries para cálculos de métricas
+            // Total de conversas para taxa de resolução
+            supabase
+              .from('conversas_atendimento')
+              .select('id', { count: 'exact' }),
 
-        return {
-          conversas_abertas: conversasAbertas.count || 0,
-          conversas_em_atendimento: conversasEmAtendimento.count || 0,
-          conversas_hoje: conversasHoje.count || 0,
-          mensagens_hoje: mensagensHoje.count || 0,
-          tempo_resposta_medio: tempoMedioResposta,
-          taxa_resolucao: await calcularTaxaResolucao(),
-          clientes_ativos: conversasHoje.count || 0,
-        };
+            // Conversas resolvidas para taxa de resolução
+            supabase
+              .from('conversas_atendimento')
+              .select('id', { count: 'exact' })
+              .eq('status', 'resolvido'),
+
+            // Mensagens para cálculo de tempo de resposta (últimos 7 dias)
+            supabase
+              .from('mensagens_atendimento')
+              .select('conversa_id, remetente_tipo, enviada_em, created_at')
+              .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+              .order('conversa_id, enviada_em', { ascending: true })
+          ]);
+
+          // Extrair resultados de forma segura, com fallbacks para queries que falharam
+          const conversasAbertas = resultados[0].status === 'fulfilled' ? resultados[0].value : { count: 0 };
+          const conversasEmAtendimento = resultados[1].status === 'fulfilled' ? resultados[1].value : { count: 0 };
+          const conversasHoje = resultados[2].status === 'fulfilled' ? resultados[2].value : { count: 0 };
+          const mensagensHoje = resultados[3].status === 'fulfilled' ? resultados[3].value : { count: 0 };
+          const totalConversas = resultados[4].status === 'fulfilled' ? resultados[4].value : { count: 0 };
+          const conversasResolvidas = resultados[5].status === 'fulfilled' ? resultados[5].value : { count: 0 };
+          const mensagensParaCalculos = resultados[6].status === 'fulfilled' ? resultados[6].value : { data: [] };
+
+          // Log de erros das queries que falharam (se houver)
+          resultados.forEach((resultado, index) => {
+            if (resultado.status === 'rejected') {
+              const nomes = ['conversasAbertas', 'conversasEmAtendimento', 'conversasHoje', 'mensagensHoje', 'totalConversas', 'conversasResolvidas', 'mensagensParaCalculos'];
+              console.error(`Erro na query ${nomes[index]}:`, resultado.reason);
+            }
+          });
+
+          // Calcular tempo de resposta médio
+          let tempoRespostaMedio = 0;
+          if (mensagensParaCalculos.data && mensagensParaCalculos.data.length > 0) {
+            const temposResposta: number[] = [];
+            const mensagensPorConversa = new Map<string, MensagemParaCalculoRow[]>();
+
+            // Agrupar mensagens por conversa
+            mensagensParaCalculos.data.forEach((msg: MensagemParaCalculoRow) => {
+              if (!mensagensPorConversa.has(msg.conversa_id)) {
+                mensagensPorConversa.set(msg.conversa_id, []);
+              }
+              mensagensPorConversa.get(msg.conversa_id)!.push(msg);
+            });
+
+            // Calcular tempos de resposta para cada conversa
+            mensagensPorConversa.forEach((mensagens) => {
+              for (let i = 0; i < mensagens.length - 1; i++) {
+                const msgAtual = mensagens[i];
+                const proximaMsg = mensagens[i + 1];
+
+                // Se cliente enviou mensagem e próxima é do atendente
+                if (msgAtual.remetente_tipo === 'cliente' && proximaMsg.remetente_tipo === 'atendente') {
+                  const tempoCliente = new Date(msgAtual.enviada_em || msgAtual.created_at || '').getTime();
+                  const tempoAtendente = new Date(proximaMsg.enviada_em || proximaMsg.created_at || '').getTime();
+                  const tempoResposta = (tempoAtendente - tempoCliente) / (1000 * 60); // em minutos
+
+                  if (tempoResposta > 0 && tempoResposta < 24 * 60) { // Filtrar tempos válidos (até 24h)
+                    temposResposta.push(tempoResposta);
+                  }
+                }
+              }
+            });
+
+            // Calcular média dos tempos de resposta
+            if (temposResposta.length > 0) {
+              tempoRespostaMedio = temposResposta.reduce((acc, tempo) => acc + tempo, 0) / temposResposta.length;
+            }
+          }
+
+          // Calcular taxa de resolução
+          const taxaResolucao = totalConversas.count && totalConversas.count > 0 
+            ? Math.round((conversasResolvidas.count || 0) / totalConversas.count * 100)
+            : 0;
+
+          return {
+            conversas_abertas: conversasAbertas.count || 0,
+            conversas_em_atendimento: conversasEmAtendimento.count || 0,
+            conversas_hoje: conversasHoje.count || 0,
+            mensagens_hoje: mensagensHoje.count || 0,
+            tempo_resposta_medio: Math.round(tempoRespostaMedio * 10) / 10, // Arredondar para 1 casa decimal
+            taxa_resolucao: taxaResolucao,
+            clientes_ativos: conversasHoje.count || 0,
+          };
+        } catch (error) {
+          console.error('Erro ao calcular métricas:', error);
+          return {
+            conversas_abertas: 0,
+            conversas_em_atendimento: 0,
+            conversas_hoje: 0,
+            mensagens_hoje: 0,
+            tempo_resposta_medio: 0,
+            taxa_resolucao: 0,
+            clientes_ativos: 0,
+          };
+        }
       },
       refetchInterval: 60000, // Atualiza a cada minuto
     });
   };
-
-  // Função para calcular tempo médio de resposta
-  const calcularTempoMedioResposta = async (): Promise<number> => {
-    try {
-      const seteDiasAtras = new Date();
-      seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
-      
-      const { data: mensagens, error } = await supabase
-        .from('mensagens_atendimento')
-        .select('conversa_id, remetente_tipo, enviada_em')
-        .gte('enviada_em', seteDiasAtras.toISOString())
-        .order('conversa_id', { ascending: true })
-        .order('enviada_em', { ascending: true });
-
-      if (error || !mensagens || mensagens.length === 0) {
-        return 2.5; // Valor padrão em minutos
-      }
-
-      const conversasMap = new Map<string, Array<{ remetente_tipo: string, enviada_em: string }>>();
-      
-      mensagens.forEach(msg => {
-        if (!conversasMap.has(msg.conversa_id)) {
-          conversasMap.set(msg.conversa_id, []);
-        }
-        conversasMap.get(msg.conversa_id)!.push({
-          remetente_tipo: msg.remetente_tipo,
-          enviada_em: msg.enviada_em
-        });
-      });
-
-      const temposResposta: number[] = [];
-
-      conversasMap.forEach(mensagensConversa => {
-        for (let i = 0; i < mensagensConversa.length - 1; i++) {
-          const mensagemAtual = mensagensConversa[i];
-          const proximaMensagem = mensagensConversa[i + 1];
-
-          if (mensagemAtual.remetente_tipo === 'cliente' && 
-              proximaMensagem.remetente_tipo === 'atendente') {
-            
-            const tempoCliente = new Date(mensagemAtual.enviada_em).getTime();
-            const tempoAtendente = new Date(proximaMensagem.enviada_em).getTime();
-            const diferenca = (tempoAtendente - tempoCliente) / 1000 / 60; // em minutos
-
-            if (diferenca >= 0.17 && diferenca <= 120) {
-              temposResposta.push(diferenca);
-            }
-          }
-        }
-      });
-
-      if (temposResposta.length === 0) {
-        return 2.5;
-      }
-
-      temposResposta.sort((a, b) => a - b);
-      const p95Index = Math.floor(temposResposta.length * 0.95);
-      const temposFiltrados = temposResposta.slice(0, p95Index);
-      
-      const media = temposFiltrados.reduce((sum, tempo) => sum + tempo, 0) / temposFiltrados.length;
-      
-      return Number(media.toFixed(1));
-      
-    } catch (error) {
-      console.error('Erro ao calcular tempo médio de resposta:', error);
-      return 2.5;
-    }
-  };
-
-  // Função para calcular taxa de resolução
-  const calcularTaxaResolucao = async (): Promise<number> => {
-    try {
-      const seteDiasAtras = new Date();
-      seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
-
-      const [totalConversas, conversasResolvidas] = await Promise.all([
-        supabase
-          .from('conversas_atendimento')
-          .select('id', { count: 'exact' })
-          .gte('created_at', seteDiasAtras.toISOString()),
-        
-        supabase
-          .from('conversas_atendimento')
-          .select('id', { count: 'exact' })
-          .gte('created_at', seteDiasAtras.toISOString())
-          .eq('status', 'resolvido')
-      ]);
-
-      if (!totalConversas.count || totalConversas.count === 0) {
-        return 94.2; // Valor padrão
-      }
-
-      const taxa = (conversasResolvidas.count || 0) / totalConversas.count * 100;
-      return Number(taxa.toFixed(1));
-
-    } catch (error) {
-      console.error('Erro ao calcular taxa de resolução:', error);
-      return 94.2;
-    }
-  };
-
-  // Mutation para enviar mensagem
-  const enviarMensagem = useMutation({
-    mutationFn: async (dados: {
-      conversa_id: string;
-      telefone: string;
-      mensagem: string;
-      tipo?: 'texto' | 'template';
-      template_id?: string;
-      variaveis?: Record<string, string>;
-    }) => {
-      const { data, error } = await supabase.functions.invoke('enviar-mensagem-whatsapp', {
-        body: dados,
-      });
-
-      if (error) {
-        console.error('Erro ao enviar mensagem:', error);
-        throw error;
-      }
-
-      return data;
-    },
-    onSuccess: () => {
-      toast({
-        title: "Mensagem enviada",
-        description: "Sua mensagem foi enviada com sucesso",
-      });
-      
-      // Invalidar queries relacionadas
-      queryClient.invalidateQueries({ queryKey: ['conversas-whatsapp'] });
-      queryClient.invalidateQueries({ queryKey: ['mensagens-whatsapp'] });
-    },
-    onError: (error) => {
-      console.error('Erro ao enviar mensagem:', error);
-      toast({
-        title: "Erro ao enviar mensagem",
-        description: "Não foi possível enviar a mensagem. Tente novamente.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Mutation para assumir atendimento
-  const assumirAtendimento = useMutation({
-    mutationFn: async (conversaId: string) => {
-      const { data: usuario } = await supabase.auth.getUser();
-      
-      if (!usuario.user) {
-        throw new Error('Usuário não autenticado');
-      }
-
-      const { data, error } = await supabase
-        .from('conversas_atendimento')
-        .update({
-          status: 'em_atendimento',
-          atendente_id: usuario.user.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', conversaId)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Erro ao assumir atendimento:', error);
-        throw error;
-      }
-
-      return data;
-    },
-    onSuccess: () => {
-      toast({
-        title: "Atendimento assumido",
-        description: "Você agora está responsável por este atendimento",
-      });
-      
-      queryClient.invalidateQueries({ queryKey: ['conversas-whatsapp'] });
-    },
-    onError: (error) => {
-      console.error('Erro ao assumir atendimento:', error);
-      toast({
-        title: "Erro ao assumir atendimento",
-        description: "Não foi possível assumir o atendimento. Tente novamente.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Mutation para finalizar conversa
-  const finalizarConversa = useMutation({
-    mutationFn: async (conversaId: string) => {
-      const { data, error } = await supabase
-        .from('conversas_atendimento')
-        .update({
-          status: 'resolvido',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', conversaId)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Erro ao finalizar conversa:', error);
-        throw error;
-      }
-
-      return data;
-    },
-    onSuccess: () => {
-      toast({
-        title: "Conversa finalizada",
-        description: "A conversa foi marcada como resolvida",
-      });
-      
-      queryClient.invalidateQueries({ queryKey: ['conversas-whatsapp'] });
-    },
-    onError: (error) => {
-      console.error('Erro ao finalizar conversa:', error);
-      toast({
-        title: "Erro ao finalizar conversa",
-        description: "Não foi possível finalizar a conversa. Tente novamente.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Mutation para criar/atualizar template
-  const salvarTemplate = useMutation({
-    mutationFn: async (template: Partial<TemplateResposta>) => {
-      if (template.id) {
-        // Atualizar template existente
-        const { data, error } = await supabase
-          .from('templates_resposta')
-          .update({
-            ...template,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', template.id)
-          .select()
-          .single();
-
-        if (error) throw error;
-        return data;
-      } else {
-        // Criar novo template
-        const { data, error } = await supabase
-          .from('templates_resposta')
-          .insert({
-            ...template,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        return data;
-      }
-    },
-    onSuccess: () => {
-      toast({
-        title: "Template salvo",
-        description: "O template foi salvo com sucesso",
-      });
-      
-      queryClient.invalidateQueries({ queryKey: ['templates-whatsapp'] });
-    },
-    onError: (error) => {
-      console.error('Erro ao salvar template:', error);
-      toast({
-        title: "Erro ao salvar template",
-        description: "Não foi possível salvar o template. Tente novamente.",
-        variant: "destructive",
-      });
-    },
-  });
 
   // Função para marcar mensagens como lidas
   const marcarComoLida = async (conversaId: string) => {
     try {
       const { error } = await supabase
         .from('mensagens_atendimento')
-        .update({ lida: true })
+        .update({ status_leitura: 'lida' })
         .eq('conversa_id', conversaId)
         .eq('remetente_tipo', 'cliente');
 
       if (error) {
         console.error('Erro ao marcar como lida:', error);
-      } else {
-        queryClient.invalidateQueries({ queryKey: ['conversas-whatsapp'] });
-        queryClient.invalidateQueries({ queryKey: ['mensagens-whatsapp', conversaId] });
+        return;
       }
+
+      // Invalidar queries relacionadas
+      queryClient.invalidateQueries({ queryKey: ['conversas-whatsapp'] });
+      queryClient.invalidateQueries({ queryKey: ['mensagens-whatsapp', conversaId] });
     } catch (error) {
       console.error('Erro ao marcar como lida:', error);
     }
@@ -506,49 +406,37 @@ export const useWhatsApp = () => {
   // Função para aplicar template
   const aplicarTemplate = (template: TemplateResposta, variaveis: Record<string, string> = {}) => {
     let conteudo = template.conteudo;
-
-    // Substituir variáveis no conteúdo
+    
+    // Substituir variáveis no template
     Object.entries(variaveis).forEach(([chave, valor]) => {
-      const regex = new RegExp(`{{${chave}}}`, 'g');
-      conteudo = conteudo.replace(regex, valor);
+      conteudo = conteudo.replace(new RegExp(`{{${chave}}}`, 'g'), valor);
     });
 
     return conteudo;
   };
 
   return {
-    // Hooks de dados
     useConversas,
     useMensagens,
     useTemplates,
     useMetricas,
-    
-    // Mutations
-    enviarMensagem,
-    assumirAtendimento,
-    finalizarConversa,
-    salvarTemplate,
-    
-    // Funções utilitárias
     marcarComoLida,
     aplicarTemplate,
   };
 };
 
-// Hook simplificado para usar em componentes
+// =====================================================
+// HOOKS AUXILIARES (para compatibilidade)
+// =====================================================
+
 export const useWhatsAppConversas = (filtros?: Parameters<ReturnType<typeof useWhatsApp>['useConversas']>[0]) => {
-  const { useConversas } = useWhatsApp();
-  return useConversas(filtros);
+  return useWhatsApp().useConversas(filtros);
 };
 
 export const useWhatsAppMensagens = (conversaId: string) => {
-  const { useMensagens } = useWhatsApp();
-  return useMensagens(conversaId);
+  return useWhatsApp().useMensagens(conversaId);
 };
 
 export const useWhatsAppMetricas = () => {
-  const { useMetricas } = useWhatsApp();
-  return useMetricas();
-};
-
-export default useWhatsApp; 
+  return useWhatsApp().useMetricas();
+}; 

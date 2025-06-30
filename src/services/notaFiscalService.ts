@@ -829,17 +829,12 @@ const processarProdutosDoXML = async (itens: Record<string, unknown>[], forneced
         const custoProduto = (item.valorUnitarioComercial as number) || 0;
         console.log(`💰 Custo do produto: ${custoProduto}`);
         
-        // Determinar categoria para markup baseado no tipo de produto classificado
-        const tipoProduto = classificarTipoProduto(produtoData.ncm, produtoData.nome);
-        // Forçar categoria correta para embalagens
-        let categoria = mapearTipoParaCategoria(tipoProduto);
-        if (tipoProduto.toUpperCase() === 'EMBALAGEM') {
-          categoria = CATEGORIAS_MARKUP.EMBALAGENS;
-        }
-        console.log(`🏷️ Tipo de produto classificado: ${tipoProduto}`);
+        // Determinar categoria diretamente baseado no NCM e nome do produto
+        const categoria = classificarCategoriaProduto(produtoData.ncm, produtoData.nome);
+        console.log(`🏷️ Categoria de produto classificada: ${categoria}`);
         
         console.log(`📊 Categoria para markup determinada: ${categoria}`);
-        console.log(`📋 Produto: "${produtoData.nome}" | NCM: "${produtoData.ncm}" | Tipo: "${tipoProduto}" | Categoria Markup: "${categoria}"`);
+        console.log(`📋 Produto: "${produtoData.nome}" | NCM: "${produtoData.ncm}" | Categoria: "${categoria}"`);
         console.log('💹 Calculando markup...');
         
         // Calcular markup automático
@@ -851,13 +846,13 @@ const processarProdutosDoXML = async (itens: Record<string, unknown>[], forneced
         const novoProduto = {
           // Campos obrigatórios da tabela produtos
           nome: produtoData.nome || 'Produto Importado',
-          tipo: classificarTipoProduto(produtoData.ncm, produtoData.nome), // Classificação automática
+          tipo: 'PRODUTO', // Tipo genérico simplificado
           unidade_medida: produtoData.unidadeComercial || 'UN', // Campo obrigatório  
           custo_unitario: custoProduto, // Campo obrigatório
           markup: markupCalculado.markup,
           markup_personalizado: false, // Usar markup padrão da categoria
           fornecedor_id: fornecedorId,
-          categoria: categoria,
+          categoria: classificarCategoriaProduto(produtoData.ncm, produtoData.nome), // Classificação direta para categoria
           
           // Campos adicionais para produtos da NF-e
           codigo_interno: produtoData.codigoInterno,
@@ -1024,10 +1019,11 @@ const calcularEstoqueMaximoInteligente = (nomeProduto: string, quantidadeComprad
 // =====================================================
 
 /**
- * Classifica o tipo do produto baseado em NCM e nome
+ * Classifica diretamente a categoria do produto baseado em NCM e nome
+ * Retorna: 'embalagens', 'alopaticos', 'homeopaticos' ou 'revenda'
  * Com foco específico em farmácia de manipulação
  */
-function classificarTipoProduto(ncm: string, nome: string): string {
+function classificarCategoriaProduto(ncm: string, nome: string): string {
   const ncmLimpo = (ncm || '').replace(/\D/g, '');
   const nomeUpper = (nome || '').toUpperCase();
 
@@ -1081,7 +1077,7 @@ function classificarTipoProduto(ncm: string, nome: string): string {
   
   // Verificação por NCM completo (8 dígitos)
   if (ncmEmbalagensFarmacia.includes(ncmLimpo)) {
-    return 'EMBALAGEM';
+    return 'embalagens';
   }
   
   // Verificação por prefixos de NCM de embalagens
@@ -1106,7 +1102,7 @@ function classificarTipoProduto(ncm: string, nome: string): string {
   ];
   
   if (prefixosEmbalagemFarmacia.some(prefixo => ncmLimpo.startsWith(prefixo))) {
-    return 'EMBALAGEM';
+    return 'embalagens';
   }
 
   // === CLASSIFICAÇÃO POR PALAVRAS-CHAVE NO NOME ===
@@ -1136,7 +1132,7 @@ function classificarTipoProduto(ncm: string, nome: string): string {
   ];
   
   if (palavrasEmbalagem.some(palavra => nomeUpper.includes(palavra))) {
-    return 'EMBALAGEM';
+    return 'embalagens';
   }
 
   // =====================================================
@@ -1144,19 +1140,19 @@ function classificarTipoProduto(ncm: string, nome: string): string {
   // =====================================================
   const regexHomeopaticoPrioritario = /(\b\d+(CH|DH|LM|FC)\b|\bCH\s?\d+\b|HOMEOPAT(?:ICO|ICA)|FLORAL|BACH|DINAMIZAÇÃO|POTÊNCIA)/;
   if (regexHomeopaticoPrioritario.test(nomeUpper)) {
-    return 'HOMEOPATICO';
+    return 'homeopaticos';
   }
 
   // === COSMÉTICOS POR NCM ===
   const ncmCosmeticos = ['3301', '3302', '3303', '3304', '3305', '3306', '3307'];
   if (ncmCosmeticos.some(prefixo => ncmLimpo.startsWith(prefixo))) {
-    return 'COSMÉTICO';
+    return 'revenda';
   }
 
   // === MEDICAMENTOS POR NCM ===
   const ncmMedicamentos = ['3003', '3004', '3002'];
   if (ncmMedicamentos.some(prefixo => ncmLimpo.startsWith(prefixo))) {
-    return 'MEDICAMENTO';
+    return 'alopaticos';
   }
 
   // === INSUMOS/MATÉRIAS-PRIMAS POR NCM ===
@@ -1167,95 +1163,95 @@ function classificarTipoProduto(ncm: string, nome: string): string {
   
   // Produtos alopáticos específicos (princípios ativos sintéticos)
   if (/(ÁCIDO|ACIDO|SULFATO|CLORIDRATO|FOSFATO|CITRATO|TARTARATO|MALEATO|SUCCINATO|PROPANODIOL|MONOHIDRAT|DIHIDRAT|ANIDRO|DAPAGLIFLOZINA|METFORMINA|LOSARTANA|ENALAPRIL|CAPTOPRIL|OMEPRAZOL|LANSOPRAZOL|ATORVASTATINA|SINVASTATINA|LEVOTIROXINA|CARVEDILOL|BISOPROLOL|FUROSEMIDA|HIDROCLOROTIAZIDA|AMLODIPINO|VALSARTANA|TELMISARTANA|IRBESARTANA|GLIMEPIRIDA|GLIBENCLAMIDA|INSULINA|PARACETAMOL|IBUPROFENO|DICLOFENACO|NIMESULIDA|CELECOXIBE|PREDNISONA|PREDNISOLONA|DEXAMETASONA|BETAMETASONA|FLUTICASONA|BUDESONIDA|AMOXICILINA|AZITROMICINA|CIPROFLOXACINO|LEVOFLOXACINO|CEFALEXINA|CLINDAMICINA|METRONIDAZOL|FLUCONAZOL|ITRACONAZOL|SERTRALINA|FLUOXETINA|PAROXETINA|VENLAFAXINA|BUPROPIONA|RISPERIDONA|QUETIAPINA|OLANZAPINA|ARIPIPRAZOL|CLONAZEPAM|LORAZEPAM|ALPRAZOLAM|DIAZEPAM|ZOLPIDEM|ZOPICLONA|DONEPEZILA|RIVASTIGMINA|MEMANTINA)/.test(nomeUpper)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
   
   // Novos produtos alopáticos identificados nos XMLs analisados (atualizado V6 - 2025-01-31)
   if (/(NALTREXONE|NALTREXONA|AEROSIL|DIACEREINA|ALANTOINA|GLUCONOLACTONA|ANASTROZOL|TESTOSTERONA|ESTRADIOL|LIOTIRONINA|CAFEINA|BIOTINA|CIANOCOBALAMINA|METILCOBALAMINA|TETRACAINA|N-ACETIL|L-CISTEINA|MINOXIDIL|CRISINA|D-RIBOSE|COENZIMA|UBIDECARENONA|TOCOFEROL|COLAGENO|PEPTAN|L-CARNITINA|L-TRIPTOFANO|L-TEANINA|CREATINA|CERAMIDAS|TREONATO|DIMAGNESIO|VITAMINA B|VITAMINA C|VITAMINA E|VITAMINA K|VITAMINA D|VITAMINA H|RESVERATROL|QUERCETINA|HIDROXITRIPTOFANO|CANFORA|CARBINOL|BETAINA|MAGNESIO|CALCIO|INDOL|DI-INDOL|GLUCOSAMINA|MSM|TRICOXIN|PSYLIUM|BETAÍNA|MALATO|CITRATO DE CALCIO|CARBONATO DE MAGNESIO|DUTASTERIDA|L-CITRULINA|L-LISINA|COLECALCIFEROL|ASHWAGANDHA|BERBERINA|SILICA|COLOIDAL|ACARBOSE|PREGABALINA|DULOXETINA|BITARTARATO|CURCUMINA)/.test(nomeUpper)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // Extratos naturais específicos (produtos fitoterápicos)
   if (/(EXTRATO|GINKGO|BILOBA|HAMAMELIS|BOLDO|PASSIFLORA|POLIPODIO|LEUCOTOMOS|VALERIANA|GARRA DO DIABO|PINUS PINASTER|PANAX GINSENG|CUCUMIS MELO|SILIMARINA)/.test(nomeUpper)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // Enzimas e probióticos
   if (/(LIPASE|LACTOBACILLUS|ACIDOPHILUS|PROBIOTICO)/.test(nomeUpper)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // Óleos e componentes específicos
   if (/(ÓLEO DE SILICONE|DIMETHICONE|COLÁGENO|HIDROLISADO|PEPTAN|LEVEDO DE CERVEJA|AMIDO DE MILHO)/.test(nomeUpper)) {
-    return 'INSUMO';
+    return 'revenda';
   }
 
   // === CLASSIFICAÇÃO POR NCM ESPECÍFICO DOS PRODUTOS ALOPÁTICOS ===
   
   // NCMs de extratos vegetais e fitoterápicos (13xxxx)
   if (['13021930', '13021960', '13021950', '13021999'].includes(ncmLimpo)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // NCMs de hormônios e derivados (2937xxxx) - ATUALIZADO
   if (['29372990', '29372349', '29379090'].includes(ncmLimpo)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // NCMs de vitaminas específicas (2936xxxx) - ATUALIZADO V3
   if (['29362710', '29362610', '29362812', '29362931', '29362940', '29362921', '29362690', '29362890', '29362911', '29362310', '29362410'].includes(ncmLimpo)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // NCMs de cafeína e estimulantes (2939xxxx)
   if (['29393010'].includes(ncmLimpo)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // NCMs de aminoácidos e derivados (29xxxx) - ATUALIZADO V6 - CORREÇÃO MINOXIDIL
   if (['29181500', '29181690', '29156019', '29239090', '29224990', '29252919', '29252990', '29223990', '29224110', '29224910', '29241999', '29309019', '29335991', '29335919', '29389090', '29391900', '29400019', '29181990', '29224190', '29335999', '29339999', '29329999', '29322000', '29397990', '29349999', '29333120', '29333999', '29221999', '29072900', '29398090', '29231000'].includes(ncmLimpo)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // NCMs de enzimas e proteínas (35xxxx, 29xxxx) - ATUALIZADO V4
   if (['35079049', '35040090', '29146200', '35079039', '35079029'].includes(ncmLimpo)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // NCMs de compostos orgânicos específicos (29xxxx)
   if (['29189999', '29332190', '29322000', '29339919', '29339969', '29339999', '29171310', '29142990', '29072900', '29147990', '29309079', '29329912', '29329999'].includes(ncmLimpo)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // NCMs de óleos e gorduras (15xxxx) - NOVO
   if (['15159090'].includes(ncmLimpo)) {
-    return 'INSUMO';
+    return 'revenda';
   }
 
   // NCMs de suplementos e preparações (21xxxx) - ATUALIZADO
   if (['21021090', '21069030', '21022000', '21069090'].includes(ncmLimpo)) {
-    return 'INSUMO';
+    return 'revenda';
   }
 
   // NCMs de excipientes farmacêuticos especializados (28xxxx) - NOVO V5
   if (['28112220', '28112230'].includes(ncmLimpo)) {
-    return 'INSUMO';
+    return 'revenda';
   }
 
   // NCMs de minerais e sais farmacêuticos (28xxxx, 25xxxx, 33xxxx, 39xxxx) - ATUALIZADO V4
   // REMOVIDO: 96020090 (cápsulas vazias) - deve ser classificado como EMBALAGEM
   if (['28369911', '25262000', '28321090', '33012990', '33029019', '33049910', '39139090', '96020010'].includes(ncmLimpo)) {
-    return 'INSUMO';
+    return 'revenda';
   }
 
   // NCMs de fibras e materiais naturais (03xxxx) - NOVO
   if (['03061990'].includes(ncmLimpo)) {
-    return 'INSUMO';
+    return 'revenda';
   }
 
   // NCMs de triglicerídeos e preparações lipídicas (38xxxx) - ATUALIZADO
   if (['39100019', '38249923'].includes(ncmLimpo)) {
-    return 'INSUMO';
+    return 'revenda';
   }
 
   // =====================================================
@@ -1263,66 +1259,66 @@ function classificarTipoProduto(ncm: string, nome: string): string {
   // =====================================================
   // Embora 08134090 seja um NCM de frutas secas, no contexto da farmácia
   // de manipulação ele representa extrato vegetal com uso terapêutico.
-  // Devemos tratar como MATÉRIA-PRIMA para aplicar o markup "alopáticos".
+  // Devemos tratar como ALOPÁTICO para aplicar o markup "alopáticos".
   if (ncmLimpo === '08134090') {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
 
   // NCMs de alimentos/suplementos (11xxxx, 12xxxx, 08xxxx, 09xxxx, 21xxxx) - ATUALIZADO V4
   if (['11081200', '11062000', '12119090', '09109900', '21021090', '21069030', '21069090'].includes(ncmLimpo)) {
-    return 'INSUMO';
+    return 'revenda';
   }
 
   // === CONTINUAR COM OUTRAS CLASSIFICAÇÕES ===
   
   // Cosméticos e produtos de beleza
   if (/(ÓLEO ESSENCIAL|BATOM|PROTETOR SOLAR|HIDRATANTE|SHAMPOO|CONDICIONADOR|SABONETE|PERFUME|COLÔNIA|DESODORANTE|CREME FACIAL|LOÇÃO|SÉRUM|MÁSCARA|ESFOLIANTE|TÔNICO|DEMAQUILANTE|BASE|PÓ|RÍMEL|SOMBRA|BLUSH|GLOSS|ESMALTE|REMOVEDOR|ACETONA|MAQUIAGEM|COSMÉTICO|BELEZA|ANTI-IDADE|ANTIRRUGAS|CLAREADOR|BRONZEADOR|AUTOBRONZEADOR|FPS|PROTEÇÃO SOLAR)/.test(nomeUpper)) {
-    return 'COSMÉTICO';
+    return 'revenda';
   }
   
   // Insumos e excipientes
   if (/(EXCIPIENTE|VEÍCULO|INSUMO|CONSERVANTE|ESTABILIZANTE|DILUENTE)/.test(nomeUpper)) {
-    return 'INSUMO';
+    return 'revenda';
   }
   
   // Formas farmacêuticas - Medicamentos
   if (/(COMPRIMIDO|CÁPSULA|CREME|SOLUÇÃO|GEL|POMADA|XAROPE|SUSPENSÃO|ELIXIR)/.test(nomeUpper)) {
-    return 'MEDICAMENTO';
+    return 'alopaticos';
   }
   
   // Matérias-primas ativas
   if (/(PRINCÍPIO ATIVO|MATÉRIA PRIMA|ATIVO|EXTRATO|TINTURA)/.test(nomeUpper)) {
-    return 'MATERIA_PRIMA';
+    return 'alopaticos';
   }
   
   // Homeopáticos específicos
   if (/(CH|DH|LM|FC|TM|FLORAL|BACH|DINAMIZAÇÃO|POTÊNCIA)/.test(nomeUpper)) {
-    return 'HOMEOPATICO';
+    return 'homeopaticos';
   }
 
   // === FALLBACK INTELIGENTE ===
   
   // Se contém números que parecem potência homeopática
   if (/\d+(CH|DH|LM|FC)/.test(nomeUpper)) {
-    return 'HOMEOPATICO';
+    return 'homeopaticos';
   }
   
   // Se o nome sugere manipulação
   if (/(MANIPULADO|FÓRMULA|PREPARAÇÃO)/.test(nomeUpper)) {
-    return 'MEDICAMENTO';
+    return 'alopaticos';
   }
   
   // Fallback final baseado no NCM
   if (ncmLimpo.startsWith('30')) {
-    return 'MEDICAMENTO'; // Grupo 30 geralmente são medicamentos
+    return 'alopaticos'; // Grupo 30 geralmente são medicamentos
   }
   
   if (ncmLimpo.startsWith('33')) {
-    return 'COSMÉTICO'; // Grupo 33 são cosméticos
+    return 'revenda'; // Grupo 33 são cosméticos
   }
 
   // Fallback padrão
-  return 'OUTRO';
+  return 'revenda';
 }
 
 // =====================================================
@@ -1404,18 +1400,16 @@ export const testarClassificacaoAlopaticos = () => {
   console.log("=".repeat(60));
   
   produtosTeste.forEach((produto, index) => {
-    const tipo = classificarTipoProduto(produto.ncm, produto.nome);
-    const categoria = tipo === 'MATERIA_PRIMA' ? 'alopaticos' : 
-                     tipo === 'INSUMO' ? 'insumos' : 'medicamentos';
+    const categoria = classificarCategoriaProduto(produto.ncm, produto.nome);
     
     console.log(`${index + 1}. ${produto.nome}`);
-    console.log(`   NCM: ${produto.ncm} | Tipo: ${tipo} | Categoria: ${categoria}`);
+    console.log(`   NCM: ${produto.ncm} | Categoria: ${categoria}`);
     console.log("");
   });
   
   return produtosTeste.map(produto => ({
     ...produto,
-    tipo: classificarTipoProduto(produto.ncm, produto.nome)
+    categoria: classificarCategoriaProduto(produto.ncm, produto.nome)
   }));
 };
 
@@ -1720,7 +1714,7 @@ export const testarClassificacaoEmbalagens = () => {
   console.log('=====================================');
   
   let embalagensCertas = 0;
-  let totalEmbalagens = 11; // Total de produtos que devem ser classificados como embalagem
+  const totalEmbalagens = 11; // Total de produtos que devem ser classificados como embalagem
   
   produtosTestados.forEach((produto, index) => {
     const classificacao = classificarTipoProduto(produto.ncm, produto.nome);

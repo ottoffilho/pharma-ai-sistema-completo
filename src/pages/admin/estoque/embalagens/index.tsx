@@ -59,8 +59,9 @@ type Embalagem = {
   id: string;
   nome: string;
   tipo: string;
-  volume_capacidade: string | null;
-  custo_unitario: number;
+  unidade_medida?: string;
+  preco_venda?: number;
+  preco_custo?: number;
   estoque_atual: number;
   estoque_minimo: number;
   estoque_maximo: number | null;
@@ -69,7 +70,7 @@ type Embalagem = {
   fornecedores: {
     nome: string | null;
   } | null;
-  is_deleted: boolean;
+  ativo: boolean;
 };
 
 const EmbalagensListPage: React.FC = () => {
@@ -91,9 +92,10 @@ const EmbalagensListPage: React.FC = () => {
     queryKey: ['embalagens'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('embalagens')
+        .from('produtos')
         .select('*, fornecedores(nome)')
-        .eq('is_deleted', false)
+        .eq('tipo', 'EMBALAGEM')
+        .eq('ativo', true)
         .order('nome');
       
       if (error) throw error;
@@ -105,8 +107,8 @@ const EmbalagensListPage: React.FC = () => {
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('embalagens')
-        .update({ is_deleted: true })
+        .from('produtos')
+        .update({ ativo: false })
         .eq('id', id);
       
       if (error) throw error;
@@ -151,7 +153,7 @@ const EmbalagensListPage: React.FC = () => {
   // Calcular métricas
   const totalEmbalagens = embalagens?.length || 0;
   const lowStockCount = embalagens?.filter(e => e.estoque_atual <= e.estoque_minimo).length || 0;
-  const totalValue = embalagens?.reduce((sum, e) => sum + (e.custo_unitario * e.estoque_atual), 0) || 0;
+  const totalValue = embalagens?.reduce((sum, e) => sum + ((e.preco_custo || 0) * e.estoque_atual), 0) || 0;
   const avgCost = totalEmbalagens > 0 ? totalValue / totalEmbalagens : 0;
 
   const handleEdit = (id: string) => {
@@ -395,7 +397,6 @@ const EmbalagensListPage: React.FC = () => {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Embalagem</TableHead>
-                        <TableHead>Tipo</TableHead>
                         <TableHead>Volume</TableHead>
                         <TableHead>Estoque</TableHead>
                         <TableHead>Custo Unit.</TableHead>
@@ -408,7 +409,7 @@ const EmbalagensListPage: React.FC = () => {
                     <TableBody>
                       {filteredEmbalagens.map((embalagem) => {
                         const stockStatus = getStockStatus(embalagem.estoque_atual, embalagem.estoque_minimo);
-                        const totalValue = embalagem.custo_unitario * embalagem.estoque_atual;
+                        const totalValue = (embalagem.preco_custo || 0) * embalagem.estoque_atual;
                         
                         return (
                           <TableRow key={embalagem.id} className="hover:bg-muted/50">
@@ -426,13 +427,8 @@ const EmbalagensListPage: React.FC = () => {
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline" className="capitalize">
-                                {embalagem.tipo}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
                               <span className="text-sm font-medium">
-                                {embalagem.volume_capacidade || '-'}
+                                {embalagem.unidade_medida || '-'}
                               </span>
                             </TableCell>
                             <TableCell>
@@ -442,7 +438,7 @@ const EmbalagensListPage: React.FC = () => {
                               </div>
                             </TableCell>
                             <TableCell className="font-medium">
-                              {formatCurrency(embalagem.custo_unitario)}
+                              {formatCurrency(embalagem.preco_custo || 0)}
                             </TableCell>
                             <TableCell className="font-medium">
                               {formatCurrency(totalValue)}

@@ -53,8 +53,45 @@ const isUUID = (value?: string): boolean => {
   return !!value && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(value);
 };
 
-export default function ControleQualidadePage() {
+// Componente wrapper para validação
+function ControleQualidadeWrapper() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  
+  // Validação do ID antes de renderizar o componente principal
+  if (!id || !isUUID(id)) {
+    return (
+      <AdminLayout>
+        <div className="container mx-auto py-6">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto" />
+                <h2 className="text-xl font-semibold">Acesso ao Controle de Qualidade</h2>
+                <p className="text-gray-600 max-w-md mx-auto">
+                  O controle de qualidade deve ser acessado através de uma ordem de produção específica.
+                </p>
+                <p className="text-sm text-gray-500">
+                  Navegue até uma ordem de produção e clique em "Controle de Qualidade" para acessar esta funcionalidade.
+                </p>
+                <Button onClick={() => navigate('/admin/producao')} className="mt-4">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Ir para Ordens de Produção
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </AdminLayout>
+    );
+  }
+  
+  // ID válido, renderizar o componente principal
+  return <ControleQualidadePageInternal id={id} />;
+}
+
+// Componente principal que só é renderizado com ID válido
+function ControleQualidadePageInternal({ id }: { id: string }) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -73,12 +110,12 @@ export default function ControleQualidadePage() {
     },
   });
 
-  // Buscar dados da ordem
+  // Buscar dados da ordem - ID já foi validado no wrapper
   const { data: ordem, isLoading: isLoadingOrdem } = useQuery({
     queryKey: ['ordem-producao', id],
-    enabled: isUUID(id),
+    retry: false, // Desabilitar retry automático
+    refetchOnWindowFocus: false, // Desabilitar refetch ao focar a janela
     queryFn: async () => {
-      if (!id || !isUUID(id)) throw new Error('ID da ordem inválido');
 
       const { data, error } = await supabase
         .from('ordens_producao')
@@ -106,6 +143,8 @@ export default function ControleQualidadePage() {
   // Buscar farmacêuticos
   const { data: farmaceuticos } = useQuery({
     queryKey: ['farmaceuticos-select'],
+    retry: false, // Desabilitar retry automático
+    refetchOnWindowFocus: false, // Desabilitar refetch ao focar a janela
     queryFn: async () => {
       const { data, error } = await supabase
         .from('usuarios_internos')
@@ -121,7 +160,6 @@ export default function ControleQualidadePage() {
 
   const adicionarTesteMutation = useMutation({
     mutationFn: async (data: TesteFormData) => {
-      if (!id) throw new Error('ID da ordem não fornecido');
 
       const { error } = await supabase
         .from('ordem_producao_qualidade')
@@ -185,7 +223,6 @@ export default function ControleQualidadePage() {
 
   const aprovarOrdemMutation = useMutation({
     mutationFn: async () => {
-      if (!id) throw new Error('ID da ordem não fornecido');
 
       const { error } = await supabase
         .from('ordens_producao')
@@ -214,7 +251,6 @@ export default function ControleQualidadePage() {
 
   const reprovarOrdemMutation = useMutation({
     mutationFn: async () => {
-      if (!id) throw new Error('ID da ordem não fornecido');
 
       const { error } = await supabase
         .from('ordens_producao')
@@ -649,4 +685,7 @@ export default function ControleQualidadePage() {
       </div>
     </AdminLayout>
   );
-} 
+}
+
+// Exportar o wrapper como default
+export default ControleQualidadeWrapper; 

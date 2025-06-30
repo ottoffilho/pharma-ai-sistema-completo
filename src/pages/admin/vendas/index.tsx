@@ -7,29 +7,19 @@ import { Link } from 'react-router-dom';
 import { 
   ShoppingCart,
   CreditCard,
-  Receipt,
   Users,
-  TrendingUp,
-  Calendar,
   BarChart3,
   Clock,
   DollarSign,
-  Package,
   Target,
   ArrowRight,
-  PlusCircle,
-  Search,
-  FileText,
   CheckCircle,
   History,
-  AlertTriangle,
-  Sparkles,
-  TrendingDown
+  Sparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import AdminLayout from '@/components/layouts/AdminLayout';
 import { useVendasCards } from '@/hooks/useVendasCards';
@@ -46,6 +36,7 @@ interface VendaFeatureCard {
   }[];
   status: 'ativo' | 'em-breve' | 'beta';
   gradient: string;
+  isNew?: boolean;
 }
 
 export default function VendasOverview() {
@@ -61,7 +52,7 @@ export default function VendasOverview() {
   const vendaFeatures: VendaFeatureCard[] = [
     {
       title: 'PDV - Ponto de Venda',
-      description: 'Sistema completo de vendas com interface moderna, busca inteligente e múltiplas formas de pagamento.',
+      description: 'Sistema unificado e inteligente de vendas. Busca produtos, ordens de produção e adapta-se automaticamente ao tipo de venda.',
       icon: <ShoppingCart className="h-6 w-6" />,
       href: '/admin/vendas/pdv',
       stats: [
@@ -77,7 +68,8 @@ export default function VendasOverview() {
         }
       ],
       status: 'ativo',
-      gradient: 'from-emerald-500 to-teal-500'
+      gradient: 'from-emerald-500 to-teal-500',
+      isNew: true
     },
     {
       title: 'Fechamento de Vendas',
@@ -305,12 +297,20 @@ export default function VendasOverview() {
                         <div className={`p-3 rounded-lg bg-gradient-to-br ${feature.gradient} text-white`}>
                           {feature.icon}
                         </div>
-                        <Badge 
-                          variant={feature.status === 'ativo' ? 'default' : feature.status === 'beta' ? 'secondary' : 'outline'}
-                          className="capitalize"
-                        >
-                          {feature.status}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          {feature.isNew && (
+                            <Badge variant="secondary" className="gap-1">
+                              <Sparkles className="h-3 w-3" />
+                              Novo
+                            </Badge>
+                          )}
+                          <Badge 
+                            variant={feature.status === 'ativo' ? 'default' : feature.status === 'beta' ? 'secondary' : 'outline'}
+                            className="capitalize"
+                          >
+                            {feature.status}
+                          </Badge>
+                        </div>
                       </div>
                       <CardTitle className="mt-4">{feature.title}</CardTitle>
                       <CardDescription>{feature.description}</CardDescription>
@@ -361,9 +361,8 @@ export default function VendasOverview() {
               })}
             </div>
 
-            {/* Insights e Alertas */}
-            <div className="mt-12 space-y-6">
-              {/* Status do Caixa */}
+            {/* Status do Caixa */}
+            <div className="mt-8">
               <Card className={`${
                 cardsData?.caixa.status === 'fechado' 
                   ? 'border-yellow-200 bg-yellow-50 dark:bg-yellow-950/20' 
@@ -402,92 +401,6 @@ export default function VendasOverview() {
                     </Button>
                   </div>
                 </CardHeader>
-              </Card>
-
-              {/* Insights de Vendas */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-start gap-4">
-                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/20">
-                      <Sparkles className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div className="flex-1">
-                      <CardTitle className="text-lg">Insights de Vendas</CardTitle>
-                      <CardDescription>
-                        Performance baseada nos últimos 30 dias
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Meta de Vendas Mensal</span>
-                        <span className="text-sm text-muted-foreground">
-                          {isLoadingCards ? (
-                            <Skeleton className="h-4 w-10 inline-block" />
-                          ) : (
-                            '78%'
-                          )}
-                        </span>
-                      </div>
-                      <Progress value={isLoadingCards ? 0 : 78} className="h-2" indicatorColor="bg-emerald-500" />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Taxa de Conversão</span>
-                        <span className="text-sm text-muted-foreground">
-                          {isLoadingCards ? (
-                            <Skeleton className="h-4 w-10 inline-block" />
-                          ) : (
-                            '92.5%'
-                          )}
-                        </span>
-                      </div>
-                      <Progress value={isLoadingCards ? 0 : 92.5} className="h-2" indicatorColor="bg-blue-500" />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Satisfação do Cliente</span>
-                        <span className="text-sm text-muted-foreground">
-                          {isLoadingCards ? (
-                            <Skeleton className="h-4 w-10 inline-block" />
-                          ) : (
-                            '4.8/5.0'
-                          )}
-                        </span>
-                      </div>
-                      <Progress value={isLoadingCards ? 0 : 96} className="h-2" indicatorColor="bg-purple-500" />
-                    </div>
-
-                    {/* Produtos Mais Vendidos */}
-                    <div className="mt-6">
-                      <h4 className="text-sm font-medium mb-3">Produtos Mais Vendidos Hoje</h4>
-                      <div className="space-y-3">
-                        {isLoadingCards ? (
-                          Array.from({ length: 3 }).map((_, i) => (
-                            <div key={i} className="flex items-center justify-between">
-                              <Skeleton className="h-4 w-32" />
-                              <Skeleton className="h-4 w-16" />
-                            </div>
-                          ))
-                        ) : (
-                          cardsData?.pdv.produtosMaisVendidos.map((item, index) => (
-                            <div key={index} className="flex items-center justify-between text-sm">
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                                <span className="font-medium">{item.produto_nome}</span>
-                                <span className="text-muted-foreground">({item.quantidade}x)</span>
-                              </div>
-                              <span className="font-medium">{formatarDinheiro(item.valor_total)}</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
               </Card>
             </div>
           </div>

@@ -39,9 +39,10 @@ const EditarEmbalagemPage: React.FC = () => {
       if (!id) throw new Error("ID da embalagem não fornecido");
       
       const { data, error } = await supabase
-        .from('embalagens')
+        .from('produtos')
         .select('*')
         .eq('id', id)
+        .eq('tipo', 'EMBALAGEM')
         .single();
       
       if (error) throw error;

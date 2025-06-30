@@ -428,52 +428,7 @@ export default function HistoricoVendas() {
               </CardContent>
             </Card>
 
-            {/* Insights */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-start gap-4">
-                  <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/20">
-                    <Sparkles className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <CardTitle className="text-lg">Insights do Período</CardTitle>
-                    <CardDescription>
-                      Análise baseada nas vendas filtradas
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Taxa de Finalização</span>
-                      <span className="text-sm text-muted-foreground">
-                        {totalVendas > 0 ? Math.round((vendasFinalizadas / totalVendas) * 100) : 0}%
-                      </span>
-                    </div>
-                    <Progress 
-                      value={totalVendas > 0 ? (vendasFinalizadas / totalVendas) * 100 : 0} 
-                      className="h-2" 
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Performance vs Meta</span>
-                      <span className="text-sm text-muted-foreground">78%</span>
-                    </div>
-                    <Progress value={78} className="h-2" />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Satisfação Cliente</span>
-                      <span className="text-sm text-muted-foreground">4.8/5.0</span>
-                    </div>
-                    <Progress value={96} className="h-2" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+
           </div>
         </div>
 

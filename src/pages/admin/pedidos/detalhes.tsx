@@ -433,6 +433,11 @@ const PrescriptionDetailsPage: React.FC = () => {
                 <Button asChild variant="default" className="transition-colors duration-200">
                   <Link to={`/admin/pedidos/${id}/editar`}>Editar</Link>
                 </Button>
+                {orderQuery.data && orderQuery.data.status === 'draft' && (
+                  <Button asChild variant="success" className="transition-colors duration-200 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700 text-white">
+                    <Link to={`/admin/pedidos/${orderQuery.data.id}/editar`}>Gerar Orçamento</Link>
+                  </Button>
+                )}
               </div>
             </div>
           </div>

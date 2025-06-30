@@ -182,5 +182,17 @@ futuras.
 
 ---
 
+## 11. Integração com Produção
+
+Após o pedido ser **aprovado** e mudar de _draft_ para _in_production_, o
+sistema gera automaticamente uma **Ordem de Produção (OP)** vinculada.
+
+• Para entender todo o processo da OP, consulte o manual:
+`documentacao_ordem_producao.md` na mesma pasta. • A OP segue o fluxo descrito
+lá até ficar **finalizada**, quando o PDV pode efetuar a venda tipo
+_MANIPULADO_.
+
+---
+
 > **Documento gerado automaticamente** – atualização via IA sempre que o código
 > do módulo é modificado.

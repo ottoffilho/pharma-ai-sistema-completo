@@ -33,7 +33,6 @@ const inputCls = "bg-white border-gray-300 text-gray-900 placeholder-gray-500 fo
 // Schema de validação Zod para o formulário de embalagens
 const embalagemSchema = z.object({
   nome: z.string().min(1, 'Nome é obrigatório'),
-  tipo: z.string().min(1, 'Tipo é obrigatório'),
   volume_capacidade: z.string().optional(),
   custo_unitario: z.coerce.number().positive('Custo deve ser positivo'),
   markup: z.number().min(0, "Markup deve ser maior ou igual a zero").default(5.00),
@@ -67,7 +66,6 @@ const EmbalagemForm: React.FC<EmbalagemFormProps> = ({
     resolver: zodResolver(embalagemSchema),
     defaultValues: {
       nome: '',
-      tipo: '',
       volume_capacidade: '',
       custo_unitario: 0,
       markup: 5.00,
@@ -103,12 +101,22 @@ const EmbalagemForm: React.FC<EmbalagemFormProps> = ({
       if (isEditing && embalagemId) {
         // Atualizar embalagem existente
         const updateData = {
-          ...data,
-          markup_personalizado: data.markup !== 5.00 // Marcar como personalizado se diferente do padrão
+          nome: data.nome,
+          tipo: 'EMBALAGEM',
+          unidade_medida: data.volume_capacidade || 'UN',
+          preco_custo: data.custo_unitario,
+          markup: data.markup,
+          markup_personalizado: data.markup !== 5.00,
+          fornecedor_id: data.fornecedor_id || null,
+          descricao: data.descricao || null,
+          estoque_atual: data.estoque_atual || 0,
+          estoque_minimo: data.estoque_minimo || 0,
+          estoque_maximo: data.estoque_maximo || null,
+          ativo: true
         };
         
         const { error } = await supabase
-          .from('embalagens')
+          .from('produtos')
           .update(updateData)
           .eq('id', embalagemId);
 
@@ -122,20 +130,24 @@ const EmbalagemForm: React.FC<EmbalagemFormProps> = ({
         // Inserir nova embalagem - garantir que campos obrigatórios estejam presentes
         const newEmbalagem = {
           nome: data.nome,
-          tipo: data.tipo,
-          custo_unitario: data.custo_unitario,
-          volume_capacidade: data.volume_capacidade || null,
+          tipo: 'EMBALAGEM',
+          unidade_medida: data.volume_capacidade || 'UN',
+          preco_custo: data.custo_unitario,
+          preco_venda: data.custo_unitario * (1 + data.markup / 100),
           markup: data.markup,
-          markup_personalizado: data.markup !== 5.00, // Marcar como personalizado se diferente do padrão para embalagens
+          markup_personalizado: data.markup !== 5.00,
           fornecedor_id: data.fornecedor_id || null,
           descricao: data.descricao || null,
           estoque_atual: data.estoque_atual || 0,
           estoque_minimo: data.estoque_minimo || 0,
-          estoque_maximo: data.estoque_maximo || null
+          estoque_maximo: data.estoque_maximo || null,
+          ativo: true,
+          controlado: false,
+          requer_receita: false
         };
         
         const { error } = await supabase
-          .from('embalagens')
+          .from('produtos')
           .insert(newEmbalagem);
 
         if (error) throw error;
@@ -175,33 +187,6 @@ const EmbalagemForm: React.FC<EmbalagemFormProps> = ({
                 <FormControl>
                   <Input className={inputCls} placeholder="Nome da embalagem" {...field} />
                 </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Tipo */}
-          <FormField
-            control={form.control}
-            name="tipo"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="dark:text-gray-300">Tipo</FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
-                  <FormControl>
-                    <SelectTrigger className={inputCls}>
-                      <SelectValue placeholder="Selecione um tipo" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="Frasco Gotas">Frasco Gotas</SelectItem>
-                    <SelectItem value="Pote Glóbulos">Pote Glóbulos</SelectItem>
-                    <SelectItem value="Outro">Outro</SelectItem>
-                  </SelectContent>
-                </Select>
                 <FormMessage />
               </FormItem>
             )}

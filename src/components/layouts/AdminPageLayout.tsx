@@ -16,4 +16,7 @@ export function AdminPageLayout({ children, className }: AdminPageLayoutProps) {
       {children}
     </div>
   );
-} 
+}
+
+// Export default para compatibilidade
+export default AdminPageLayout; 

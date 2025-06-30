@@ -15,7 +15,9 @@ import {
   Layers,
   Users,
   ShieldCheck,
-  Package
+  Package,
+  Pill,
+  FlaskConical as FormulaIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,9 +78,21 @@ export default function CadastrosOverview() {
     queryKey: ['embalagensCount'],
     queryFn: async () => {
       const { count } = await supabase
-        .from('embalagens')
+        .from('produtos')
         .select('*', { head: true, count: 'exact' })
+        .eq('tipo', 'EMBALAGEM')
         .eq('is_deleted', false);
+      return count || 0;
+    }
+  });
+
+  const { data: formasFarmaceuticasCount } = useQuery({
+    queryKey: ['formasFarmaceuticasCount'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('formas_farmaceuticas')
+        .select('*', { head: true, count: 'exact' })
+        .eq('ativo', true);
       return count || 0;
     }
   });
@@ -131,6 +145,18 @@ export default function CadastrosOverview() {
       },
       status: 'ativo',
       gradient: 'from-teal-500 to-cyan-500'
+    },
+    {
+      title: 'Formas Farmacêuticas',
+      description: 'Configure formas farmacêuticas, processos de produção e parâmetros de rótulo.',
+      icon: <Pill className="h-6 w-6" />,
+      href: '/admin/cadastros/formas-farmaceuticas',
+      count: {
+        label: 'Formas cadastradas',
+        value: formasFarmaceuticasCount ?? 0,
+      },
+      status: 'ativo',
+      gradient: 'from-green-500 to-emerald-500'
     },
     {
       title: 'Médicos',

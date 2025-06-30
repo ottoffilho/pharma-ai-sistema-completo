@@ -1,0 +1,223 @@
+{
+  "name": "Alerta SLA Atendimento",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "value": "*/5 * * * *"
+            }
+          ]
+        }
+      },
+      "name": "Cron SLA Check",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "https://hjwebmpvaaeogbfqxwub.supabase.co/rest/v1/rpc/buscar_conversas_sla_expirado",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "{{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            }
+          ]
+        }
+      },
+      "name": "Buscar Conversas Atrasadas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "number_type_option",
+              "leftValue": "={{$json.length}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Há Conversas Atrasadas?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "mensagem",
+              "value": "🚨 *ALERTA SLA WHATSAPP* 🚨\n\n{{$input.all().length}} conversas com SLA expirado:\n\n{{$input.all().map(item => `• ${item.cliente_nome} (${item.cliente_telefone}) - Exp: ${new Date(item.sla_expira_em).toLocaleString('pt-BR')}`).join('\\n')}}\n\n🔗 Acesse: https://app.pharmaai.com/admin/whatsapp"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Formatar Mensagem Slack",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "={{$env.SLACK_WEBHOOK_URL}}",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "text",
+              "value": "={{$json.mensagem}}"
+            },
+            {
+              "name": "channel",
+              "value": "#suporte-farmacia"
+            },
+            {
+              "name": "username",
+              "value": "Pharma.AI Bot"
+            },
+            {
+              "name": "icon_emoji",
+              "value": ":warning:"
+            }
+          ]
+        }
+      },
+      "name": "Enviar Alerta Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "No Operation (Sem Atrasos)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        900,
+        480
+      ]
+    }
+  ],
+  "connections": {
+    "Cron SLA Check": {
+      "main": [
+        [
+          {
+            "node": "Buscar Conversas Atrasadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Conversas Atrasadas": {
+      "main": [
+        [
+          {
+            "node": "Há Conversas Atrasadas?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Há Conversas Atrasadas?": {
+      "main": [
+        [
+          {
+            "node": "Formatar Mensagem Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation (Sem Atrasos)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Mensagem Slack": {
+      "main": [
+        [
+          {
+            "node": "Enviar Alerta Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "pharma-ai-n8n"
+  },
+  "id": "alerta-sla-atendimento",
+  "tags": ["whatsapp", "sla", "alerta", "pharma-ai"]
+} 

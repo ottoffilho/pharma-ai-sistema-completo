@@ -124,6 +124,10 @@ const produtoSchema = z.object({
   descricao: z.string().optional(),
   codigo_interno: z.string().optional(),
   codigo_ean: z.string().optional(),
+  densidade: z.number().optional().nullable()
+    .refine((val) => !val || (val > 0 && val < 10), {
+      message: "Densidade deve estar entre 0 e 10 g/ml"
+    }),
 });
 
 type ProdutoFormData = z.infer<typeof produtoSchema>;
@@ -229,6 +233,7 @@ const ProdutoForm: React.FC<ProdutoFormProps> = ({
         descricao: produto.descricao || undefined,
         codigo_interno: produto.codigo_interno || undefined,
         codigo_ean: produto.codigo_ean || undefined,
+        densidade: produto.densidade || undefined,
       });
     }
   }, [produto, carregandoProduto, form]);
@@ -271,6 +276,7 @@ const ProdutoForm: React.FC<ProdutoFormProps> = ({
         descricao: data.descricao,
         codigo_interno: data.codigo_interno,
         codigo_ean: data.codigo_ean,
+        densidade: data.densidade,
         updated_at: new Date().toISOString(),
       };
 
@@ -554,6 +560,33 @@ const ProdutoForm: React.FC<ProdutoFormProps> = ({
                       <FormLabel>Volume/Capacidade</FormLabel>
                       <FormControl>
                         <Input placeholder="Ex: 10ml, 30g, 100 cápsulas" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Densidade */}
+                <FormField
+                  control={form.control}
+                  name="densidade"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Densidade (g/ml)
+                        <span className="text-sm font-normal text-muted-foreground ml-2">
+                          Importante para cálculo de volume
+                        </span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.001"
+                          placeholder="Ex: 1.00"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

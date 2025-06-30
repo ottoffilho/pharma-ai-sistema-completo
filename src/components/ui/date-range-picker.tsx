@@ -1,31 +1,37 @@
-import React from 'react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { Calendar as CalendarIcon } from 'lucide-react';
-import { DateRange } from 'react-day-picker';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import * as React from "react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Calendar as CalendarIcon } from "lucide-react";
+import { DateRange } from "react-day-picker";
+
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface DatePickerWithRangeProps {
-  date: { from: Date; to: Date };
-  onDateChange: (range: { from: Date; to: Date }) => void;
   className?: string;
+  onDateChange?: (range: { from?: Date; to?: Date }) => void;
   placeholder?: string;
 }
 
 export function DatePickerWithRange({
-  date,
-  onDateChange,
   className,
-  placeholder = "Selecione um período"
+  onDateChange,
+  placeholder = "Selecione um período",
 }: DatePickerWithRangeProps) {
+  const [date, setDate] = React.useState<DateRange | undefined>();
+
   const handleSelect = (range: DateRange | undefined) => {
-    if (range?.from && range?.to) {
+    setDate(range);
+    if (onDateChange) {
       onDateChange({
-        from: range.from,
-        to: range.to
+        from: range?.from,
+        to: range?.to,
       });
     }
   };
@@ -36,7 +42,7 @@ export function DatePickerWithRange({
         <PopoverTrigger asChild>
           <Button
             id="date"
-            variant="outline"
+            variant={"outline"}
             className={cn(
               "w-full justify-start text-left font-normal",
               !date && "text-muted-foreground"
@@ -62,10 +68,7 @@ export function DatePickerWithRange({
             initialFocus
             mode="range"
             defaultMonth={date?.from}
-            selected={{
-              from: date?.from,
-              to: date?.to
-            }}
+            selected={date}
             onSelect={handleSelect}
             numberOfMonths={2}
             locale={ptBR}

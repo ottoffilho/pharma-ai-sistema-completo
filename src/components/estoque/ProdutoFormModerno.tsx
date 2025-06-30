@@ -124,6 +124,10 @@ const produtoSchema = z.object({
   descricao: z.string().optional(),
   codigo_interno: z.string().optional(),
   codigo_ean: z.string().optional(),
+  densidade: z.number().optional().nullable()
+    .refine((val) => !val || (val > 0 && val < 10), {
+      message: "Densidade deve estar entre 0 e 10 g/ml"
+    }),
 });
 
 type ProdutoFormData = z.infer<typeof produtoSchema>;
@@ -185,6 +189,7 @@ const ProdutoFormModerno: React.FC<ProdutoFormModernoProps> = ({ produtoId }) =>
       descricao: '',
       codigo_interno: '',
       codigo_ean: '',
+      densidade: null,
     },
   });
 
@@ -262,6 +267,7 @@ const ProdutoFormModerno: React.FC<ProdutoFormModernoProps> = ({ produtoId }) =>
         descricao: produto.descricao || '',
         codigo_interno: produto.codigo_interno || '',
         codigo_ean: produto.codigo_ean || '',
+        densidade: produto.densidade || null,
       });
 
       // Para edição, marcar todas as etapas como completas para permitir navegação livre
@@ -304,6 +310,7 @@ const ProdutoFormModerno: React.FC<ProdutoFormModernoProps> = ({ produtoId }) =>
         descricao: data.descricao,
         codigo_interno: data.codigo_interno,
         codigo_ean: data.codigo_ean,
+        densidade: data.densidade || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -745,6 +752,41 @@ const ProdutoFormModerno: React.FC<ProdutoFormModernoProps> = ({ produtoId }) =>
                             <FormControl>
                               <Input placeholder="Ex: 10ml, 30g, 100 cápsulas" {...field} />
                             </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Densidade */}
+                      <FormField
+                        control={form.control}
+                        name="densidade"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="flex items-center gap-2">
+                              Densidade (g/ml)
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Importante para cálculo de volume em fórmulas</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                step="0.01" 
+                                placeholder="Ex: 1.00"
+                                {...field}
+                                value={field.value || ''}
+                                onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Usado para converter massa em volume
+                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}

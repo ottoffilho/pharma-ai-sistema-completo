@@ -84,34 +84,53 @@ serve(async (req) => {
 async function abrirCaixa(req: Request, supabase: any, userId: string) {
   const data: AbrirCaixaRequest = await req.json()
 
-  // Verificar se há caixa já aberto
+  // 1. Buscar perfil do usuário para obter farmacia_id
+  const { data: perfilUsuario, error: perfilError } = await supabase
+    .from('usuarios')
+    .select('farmacia_id')
+    .eq('id', userId)
+    .single()
+
+  if (perfilError || !perfilUsuario || !perfilUsuario.farmacia_id) {
+    console.error('Erro ao buscar perfil ou farmacia_id:', perfilError)
+    return new Response(
+      JSON.stringify({ error: 'Não foi possível identificar a farmácia do usuário.' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  
+  const { farmacia_id } = perfilUsuario
+
+  // 2. Verificar se há caixa já aberto para esta farmácia
   const { data: caixaAberto } = await supabase
     .from('abertura_caixa')
     .select('id, status')
     .eq('status', 'aberto')
+    .eq('farmacia_id', farmacia_id) // <-- Adicionado filtro por farmácia
     .order('data_abertura', { ascending: false })
     .limit(1)
 
   if (caixaAberto && caixaAberto.length > 0) {
     return new Response(
-      JSON.stringify({ error: 'Já existe um caixa aberto. Feche-o antes de abrir um novo.' }),
+      JSON.stringify({ error: 'Já existe um caixa aberto para esta farmácia. Feche-o antes de abrir um novo.' }),
       { status: 400, headers: { 'Content-Type': 'application/json' } }
     )
   }
 
-  // Validar valor inicial
-  if (!data.valor_inicial || data.valor_inicial < 0) {
+  // 3. Validar valor inicial
+  if (data.valor_inicial === undefined || data.valor_inicial === null || data.valor_inicial < 0) {
     return new Response(
       JSON.stringify({ error: 'Valor inicial deve ser maior ou igual a zero' }),
       { status: 400, headers: { 'Content-Type': 'application/json' } }
     )
   }
 
-  // Abrir novo caixa
+  // 4. Abrir novo caixa com farmacia_id
   const { data: novoCaixa, error: caixaError } = await supabase
     .from('abertura_caixa')
     .insert({
       usuario_id: userId,
+      farmacia_id: farmacia_id, // <-- Adicionado farmacia_id
       data_abertura: new Date().toISOString(),
       valor_inicial: data.valor_inicial,
       status: 'aberto',
@@ -122,8 +141,10 @@ async function abrirCaixa(req: Request, supabase: any, userId: string) {
 
   if (caixaError) {
     console.error('Erro ao abrir caixa:', caixaError)
+    // Adiciona mais detalhes do erro para o frontend
+    const errorMessage = caixaError.details || 'Erro ao criar o registro do caixa no banco de dados.';
     return new Response(
-      JSON.stringify({ error: 'Erro ao abrir caixa' }),
+      JSON.stringify({ error: errorMessage, details: caixaError }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
   }

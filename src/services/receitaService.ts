@@ -464,7 +464,11 @@ export const validatePrescriptionData = (data: IAExtractedData): boolean => {
 };
 
 /**
- * Salva receita processada e validada
+ * Salva receita processada no banco de dados e cria ordem de produção automaticamente
+ * @param rawRecipeId - ID da receita bruta
+ * @param extractedData - Dados extraídos da receita
+ * @param validationNotes - Observações de validação
+ * @returns ID da receita processada
  */
 export const saveProcessedRecipe = async (
   rawRecipeId: string,
@@ -472,49 +476,39 @@ export const saveProcessedRecipe = async (
   validationNotes?: string
 ): Promise<string> => {
   try {
-    // Verificar se já existe uma receita processada para este raw_recipe_id
-    const { data: existing, error: selectError } = await supabase
-      .from('receitas_processadas')
-      .select('id')
-      .eq('raw_recipe_id', rawRecipeId)
-      .maybeSingle();
+    console.log('Salvando receita processada:', { rawRecipeId, extractedData });
 
-    if (selectError && selectError.code !== 'PGRST116') {
-      // 116 = no rows for singular, safe to ignore
-      throw selectError;
+    // Primeiro, salvar a receita processada
+    const { data, error } = await supabase.functions.invoke('processar-receita', {
+      body: {
+        raw_recipe_id: rawRecipeId,
+        extracted_data: extractedData,
+        validation_notes: validationNotes || ''
+      }
+    });
+
+    if (error) {
+      throw new Error(`Erro ao salvar receita: ${error.message}`);
     }
 
-    // Obter ID do usuário atual
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      throw new Error('Usuário não autenticado');
+    if (!data.success) {
+      throw new Error(data.error || 'Falha ao salvar receita processada');
     }
 
-    const processedRecipe = {
-      raw_recipe_id: rawRecipeId,
-      processed_by_user_id: user.id,
-      medications: extractedData.medications as Record<string, unknown>[], // Garantir que é um array
-      patient_name: extractedData.patient_name || null,
-      patient_dob: extractedData.patient_dob || null,
-      prescriber_name: extractedData.prescriber_name || null,
-      prescriber_identifier: extractedData.prescriber_identifier || null,
-      validation_status: 'pending' as const,
-      validation_notes: validationNotes || null,
-      raw_ia_output: extractedData as Record<string, unknown> // Dados brutos da IA para auditoria
-    };
+    const recipeId = data.recipe_id;
+    console.log('Receita processada salva:', recipeId);
 
-    // Criar nova receita
-    const { data: newRecipe, error: insertError } = await supabase
-      .from('receitas_processadas')
-      .insert(processedRecipe)
-      .select('id')
-      .single();
-
-    if (insertError) {
-      throw new Error(`Erro ao salvar receita: ${insertError.message}`);
+    // Criar ordem de produção automaticamente
+    try {
+      const orderId = await createOrderFromRecipe(recipeId, extractedData, validationNotes);
+      console.log('Ordem de produção criada automaticamente:', orderId);
+    } catch (orderError) {
+      console.warn('Aviso: Receita salva mas falha ao criar ordem de produção:', orderError);
+      // Não falhar completamente - receita foi salva com sucesso
     }
 
-    return newRecipe.id;
+    return recipeId;
+
   } catch (error) {
     console.error('Erro ao salvar receita processada:', error);
     throw error;
@@ -585,6 +579,105 @@ export const getProcessedRecipeById = async (id: string) => {
     return data;
   } catch (error) {
     console.error('Erro ao buscar receita por ID:', error);
+    throw error;
+  }
+};
+
+/**
+ * Cria uma ordem de produção a partir de uma receita processada
+ */
+export const createOrderFromRecipe = async (
+  recipeId: string,
+  extractedData: IAExtractedData,
+  observacoes?: string
+): Promise<string> => {
+  try {
+    // Preparar dados para a ordem de produção
+    const orderData = {
+      receita_id: recipeId,
+      cliente_nome: extractedData.patient_name,
+      cliente_documento: '', // Pode ser extraído se houver
+      observacoes: observacoes || '',
+      medicamentos: extractedData.medications.map(med => ({
+        nome: med.name,
+        forma_farmaceutica: med.form || '',
+        quantidade: med.quantity || 1,
+        unidade: med.unit || 'unidades',
+        valor_unitario: 0, // Será calculado posteriormente
+        instrucoes_uso: med.dosage_instructions || ''
+      }))
+    };
+
+    // Chamar Edge Function para criar ordem
+    const { data, error } = await supabase.functions.invoke('gerenciar-ordens-producao-criar', {
+      body: orderData
+    });
+
+    if (error) {
+      throw new Error(`Erro ao criar ordem de produção: ${error.message}`);
+    }
+
+    if (!data.success) {
+      throw new Error(data.error || 'Falha ao criar ordem de produção');
+    }
+
+    console.log('Ordem de produção criada:', data.data);
+    return data.data.id;
+
+  } catch (error) {
+    console.error('Erro ao criar ordem de produção:', error);
+    throw error;
+  }
+};
+
+/**
+ * Busca ordens de produção prontas para o PDV
+ */
+export const getReadyOrders = async (): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('gerenciar-ordens-producao/prontas');
+
+    if (error) {
+      throw new Error(`Erro ao buscar ordens prontas: ${error.message}`);
+    }
+
+    if (!data.success) {
+      throw new Error(data.error || 'Falha ao buscar ordens prontas');
+    }
+
+    return data.data || [];
+
+  } catch (error) {
+    console.error('Erro ao buscar ordens prontas:', error);
+    throw error;
+  }
+};
+
+/**
+ * Atualiza status de uma ordem de produção
+ */
+export const updateOrderStatus = async (
+  orderId: string,
+  status: 'PENDENTE' | 'EM_PRODUCAO' | 'PRONTA' | 'ENTREGUE' | 'CANCELADA',
+  observacoes?: string
+): Promise<void> => {
+  try {
+    const { data, error } = await supabase.functions.invoke(`gerenciar-ordens-producao/${orderId}/status`, {
+      body: { status, observacoes }
+    });
+
+    if (error) {
+      throw new Error(`Erro ao atualizar status: ${error.message}`);
+    }
+
+    if (!data.success) {
+      throw new Error(data.error || 'Falha ao atualizar status');
+    }
+
+    console.log('Status da ordem atualizado:', data.data);
+
+  } catch (error) {
+    console.error('Erro ao atualizar status da ordem:', error);
     throw error;
   }
 }; 

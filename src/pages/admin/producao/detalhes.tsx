@@ -28,7 +28,22 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import AdminLayout from '@/components/layouts/AdminLayout';
-import { OrdemProducao } from '@/integrations/supabase/types';
+// Definir interface local para OrdemProducao
+interface OrdemProducao {
+  id: string;
+  numero_ordem: string;
+  status: string;
+  prioridade: string;
+  receita_id?: string;
+  usuario_responsavel_id?: string;
+  farmaceutico_responsavel_id?: string;
+  observacoes_gerais?: string;
+  data_criacao: string;
+  data_finalizacao?: string;
+  is_deleted?: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 const statusConfig = {
   pendente: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
@@ -203,67 +218,8 @@ export default function DetalhesOrdemProducaoPage() {
 
       const { data, error } = await supabase
         .from('ordens_producao')
-        .select(`
-          *,
-          pedidos (
-            id,
-            status,
-            total_amount,
-            receitas_processadas (
-              patient_name,
-              medications
-            )
-          ),
-          receitas_processadas (
-            id,
-            patient_name,
-            medications
-          ),
-          usuarios_internos!ordens_producao_usuario_responsavel_id_fkey (
-            id,
-            nome_completo,
-            cargo_perfil
-          ),
-          farmaceutico:usuarios_internos!ordens_producao_farmaceutico_responsavel_id_fkey (
-            id,
-            nome_completo,
-            cargo_perfil
-          ),
-          ordem_producao_insumos (
-            *,
-            insumos (
-              nome,
-              unidade_medida
-            )
-          ),
-          ordem_producao_embalagens (
-            *,
-            embalagens (
-              nome,
-              tipo
-            )
-          ),
-          ordem_producao_etapas (
-            *,
-            usuarios_internos (
-              nome_completo
-            )
-          ),
-          ordem_producao_qualidade (
-            *,
-            farmaceutico:usuarios_internos (
-              nome_completo
-            )
-          ),
-          historico_status_ordens (
-            *,
-            usuarios_internos (
-              nome_completo
-            )
-          )
-        `)
+        .select('*')
         .eq('id', id)
-        .eq('is_deleted', false)
         .single();
 
       if (error) throw error;

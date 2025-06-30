@@ -1,107 +1,76 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <prompt>
+  <title>Refatoração UX – Página Nova Receita (Wizard de 2 Etapas)</title>
+
   <!--
-    Este prompt instrui o Claude Code a implementar todo o fluxo de Atendimento via WhatsApp
-    descrito no arquivo arquitetura_whatsapp.md. O modelo DEVE utilizar SEMPRE o conjunto de
-    comandos MCP do Supabase (mcp_supabase_*) para criação de tabelas, RLS, Edge Functions,
-    migrações e deploy. O objetivo é gerar um PR completo e funcional.
+    Este prompt será usado no Claude Code para gerar/alterar componentes React
+    (TypeScript + Vite + shadcn/ui) dentro do projeto Pharma.AI.
+    O objetivo é substituir o layout atual em colunas fixas por um fluxo em duas etapas
+    (wizard), melhorando legibilidade e tornando o processo mais intuitivo.
   -->
 
   <context>
-    <projeto>Pharma.AI – Sistema de Farmácia de Manipulação</projeto>
-    <objetivo>
-      Implementar atendimento híbrido WhatsApp (IA + Atendente) com integração oficial Meta Cloud API,
-      orçamentos automáticos de receita, SLA, métricas e automações n8n.
-    </objetivo>
-    <estadoAtual>
-      Tabelas existentes: conversas_atendimento, mensagens_atendimento, templates_resposta.
-      Edge Function existente: enviar-mensagem-whatsapp (mock).
-      Front-end: Hook useWhatsApp, página admin/whatsapp, RPC buscar_conversas_whatsapp.
-    </estadoAtual>
+    <project>Pharma.AI – Módulo Atendimento</project>
+    <filePath>src/pages/admin/pedidos/nova-receita.tsx</filePath>
+    <techStack>React 18, TypeScript strict, Vite, shadcn/ui, Tailwind</techStack>
   </context>
 
-  <requisitosGerais>
-    <linguagens>TypeScript estrito, Deno para Edge, SQL Postgres 15.</linguagens>
-    <padrões>Seguir regras de código Pharma.AI (interfaces, React Query, RLS, 98 % TS coverage).</padrões>
-    <supabase>MCP obrigatório para TODAS as ações (criação de tabelas, RLS, funções, deploy).</supabase>
-  </requisitosGerais>
+  <overview>
+    1. Dividir o fluxo em duas etapas claras: <step1 /> (Entrada) e <step2 /> (Validação).
+    2. Remover o layout "split grid" que causa cortes de texto; usar layout flexível.
+    3. Mostrar preview da receita em <drawer /> ou <dialog /> acionado por botão.
+    4. Garantir acessibilidade, responsividade e atalhos de teclado.
+  </overview>
 
-  <tarefasBackend>
-    <edgeFunctions>
-      <function name="webhook-whatsapp-inbound">
-        <descricao>Receber webhooks da Meta, validar assinatura, criar/atualizar conversa, inserir mensagem, publicar Realtime.</descricao>
-      </function>
-      <function name="enviar-mensagem-whatsapp">
-        <descricao>Atualizar função existente para envio real via Meta Cloud API, tratamento de mídia, erros e atualização de status.</descricao>
-      </function>
-      <function name="processar-receita-ai">
-        <descricao>Receber imagem de receita, executar OCR + LLM, gerar JSON da fórmula.</descricao>
-      </function>
-      <function name="validar-orcamento">
-        <descricao>Permitir atendente confirmar ou ajustar valor; atualizar tabela orcamentos e disparar mensagem ao cliente.</descricao>
-      </function>
-      <function name="co-pilot-sugestoes" optional="true">
-        <descricao>Gerar respostas sugeridas em tempo real para o atendente.</descricao>
-      </function>
-    </edgeFunctions>
+  <requirements>
+    <step number="1" id="Entrada">
+      <description>Aba Upload OU Digitação Manual.</description>
+      <actions>
+        <action>Manter componentes existentes de upload e digitação.</action>
+        <action>Adicionar botão primário "Avançar para Validação" que fica desabilitado até que exista extractedData.</action>
+      </actions>
+    </step>
 
-    <tabelasSQL>
-      <tabela name="orcamentos">
-        <campos>id UUID PK, conversa_id FK, json_receita JSONB, valor_estimado NUMERIC(10,2), valor_final NUMERIC(10,2), status ENUM('provisorio','validado','enviado'), created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ</campos>
-      </tabela>
-      <tabela name="eventos_whatsapp">
-        <campos>id UUID PK, mensagem_id FK, evento VARCHAR, timestamp TIMESTAMPTZ</campos>
-      </tabela>
-      <tabela name="fila_conversas">
-        <campos>id UUID PK, conversa_id FK, status VARCHAR, posicao INT, atribulada_a UUID</campos>
-      </tabela>
-      <alterar name="conversas_atendimento">
-        <addColumn>sla_expira_em TIMESTAMPTZ, canal VARCHAR DEFAULT 'whatsapp'</addColumn>
-      </alterar>
-    </tabelasSQL>
+    <step number="2" id="Validação">
+      <description>Revisão dos dados extraídos/digitados.</description>
+      <layout>Formulário ocupa 100% da largura; campos w-full e text-wrap.</layout>
+      <preview>
+        <component>RecipePreviewDrawer</component>
+        <triggerButton>
+          <icon>Image</icon>
+          <label>Visualizar Receita</label>
+          <shortcut>Alt+V</shortcut>
+        </triggerButton>
+      </preview>
+      <actions>
+        <action>Botões: Cancelar | Criar Pedido.</action>
+        <action>Toast de sucesso após criação com links "Abrir Pedido" e "Voltar à lista".</action>
+      </actions>
+    </step>
+  </requirements>
 
-    <rlsPolicies>
-      Atendente só acessa quando atendente_id = auth.uid() ou status = 'aberto'; Supervisores via claim nivel_acesso = 'supervisor'. Use mcp_supabase_apply_migration para definir.
-    </rlsPolicies>
+  <uiGuidelines>
+    <typography>Base 16px, line-height 1.45.</typography>
+    <buttons>Usar gradientes existentes; manter consistência com design system.</buttons>
+    <responsiveness>
+      Até lg: formulário stacked; FAB de ação fixa no footer mobile.</responsiveness>
+  </uiGuidelines>
 
-    <realtimeChannels>whatsapp_conversas, whatsapp_mensagens</realtimeChannels>
-  </tarefasBackend>
+  <tasks>
+    <task>Refatorar componente principal para <RecipeWizard /> com useState(step).</task>
+    <task>Migrar lógica de processamento IA e manual para função handleNextStep().</task>
+    <task>Remover toggle split/preview; substituir por Drawer.</task>
+    <task>Atualizar imports e testes se necessário.</task>
+  </tasks>
 
-  <tarefasFrontend>
-    <hooks>
-      Atualizar useWhatsApp para usar Realtime subscribe; fallback polling.
-    </hooks>
-    <pages>
-      • Nova aba "Orçamentos Pendentes" no painel whatsapp.  
-      • UI de validação (editar preço, ESTOQUE, prazo).
-    </pages>
-  </tarefasFrontend>
+  <acceptanceCriteria>
+    <criterion>Não deve haver texto cortado em 1366×768.</criterion>
+    <criterion>Nenhum console error/lint error.</criterion>
+    <criterion>Teste manual em desktop e mobile: fluxo completo até criar pedido.</criterion>
+  </acceptanceCriteria>
 
-  <automacoesN8N>
-    <workflow name="Alerta SLA" descricao="cron 5 min → SQL → Slack" />
-    <workflow name="Pesquisa CSAT" descricao="webhook → wait 15 min → Meta template" />
-    <workflow name="Backup Receitas" descricao="cron diário → Storage → S3 Glacier" />
-    <!-- Exportar JSON para infra/automacoes-n8n -->
-  </automacoesN8N>
-
-  <metricas>
-    FRT, ART, CSAT, FRT-IA, Taxa de Desistência IA, % Orçamentos sem ajuste.
-  </metricas>
-
-  <guidelinesSupabase>
-    • Sempre utilize chamadas mcp_supabase_* para criar tabelas, RLS, migrar e fazer deploy.  
-    • Edge Functions compiladas e publicadas via mcp_supabase_deploy_edge_function.  
-    • Versionamento de migrações em pasta supabase/migrations.
-  </guidelinesSupabase>
-
-  <entregaveis>
-    1. Código completo (Edge, React, SQL) pronto para `pnpm dev` e `supabase functions serve`.  
-    2. Scripts MCP de migração e deploy.  
-    3. Arquivos JSON dos workflows n8n.  
-    4. README passo a passo.
-  </entregaveis>
-
-  <modoOperacao>
-    Claude deverá gerar PR incremental, explicando cada commit. Utilize comentários em português.
-  </modoOperacao>
+  <notes>
+    Usar componentes shadcn/ui (<Sheet />, <Dialog />, <Button />) – seguir padrões existentes.
+    Cumprir todas regras de código do projeto: TypeScript estrito, hooks já implementados, React Query.
+  </notes>
 </prompt>

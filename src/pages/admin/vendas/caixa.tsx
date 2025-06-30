@@ -33,7 +33,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthSimple } from '@/modules/usuarios-permissoes/hooks/useAuthSimple';
+import { supabase } from '@/integrations/supabase/client';
 import AdminLayout from '@/components/layouts/AdminLayout';
+import useCaixa from '@/hooks/useCaixa';
 
 interface CaixaStatus {
   id?: string;
@@ -71,14 +73,28 @@ interface ResumoVendas {
 }
 
 export default function ControleCaixa() {
-  const [caixaAtual, setCaixaAtual] = useState<CaixaStatus | null>(null);
+  // Usar o hook customizado
+  const {
+    caixaAtivo, // Usaremos este como a fonte de verdade principal
+    isCaixaAberto,
+    isLoading: isCaixaHookLoading,
+    abrirCaixa,
+    fecharCaixa,
+    registrarSangria,
+    registrarSuprimento,
+    isAbrindoCaixa,
+    isFechandoCaixa,
+    isRegistrandoMovimento
+  } = useCaixa();
+
+  // Estados para dados que ainda não vêm do hook
   const [loading, setLoading] = useState(true);
   const [movimentos, setMovimentos] = useState<MovimentoCaixa[]>([]);
   const [resumoVendas, setResumoVendas] = useState<ResumoVendas | null>(null);
   
   // Estados para abertura de caixa
   const [aberturaOpen, setAberturaOpen] = useState(false);
-  const [valorInicialAbertura, setValorInicialAbertura] = useState('');
+  const [valorInicialAbertura, setValorInicialAbertura] = useState('0');
   const [observacoesAbertura, setObservacoesAbertura] = useState('');
   
   // Estados para fechamento de caixa
@@ -103,51 +119,228 @@ export default function ControleCaixa() {
     try {
       setLoading(true);
       
-      // Mock de dados para demonstração
-      const mockCaixa: CaixaStatus = {
-        id: '1',
-        data_abertura: new Date().toISOString(),
-        usuario_abertura: usuario?.email || 'Usuario',
-        valor_inicial: 200.00,
-        valor_vendas: 1500.50,
-        valor_sangrias: 300.00,
-        valor_suprimentos: 100.00,
-        valor_calculado: 1500.50,
-        status: 'aberto',
-        observacoes_abertura: 'Abertura normal do caixa'
-      };
-      
-      setCaixaAtual(mockCaixa);
-      
-      // Mock de movimentos
-      setMovimentos([
-        {
-          id: '1',
-          tipo: 'sangria',
-          valor: 200.00,
-          descricao: 'Troco para posto de gasolina',
-          usuario: usuario?.email || 'Usuario',
-          data_movimento: new Date().toISOString()
-        },
-        {
-          id: '2',
-          tipo: 'suprimento',
-          valor: 50.00,
-          descricao: 'Dinheiro adicional',
-          usuario: usuario?.email || 'Usuario',
-          data_movimento: new Date().toISOString()
+      // 1. Buscar caixa aberto atual
+      const { data: caixaAberto, error: caixaError } = await supabase
+        .from('abertura_caixa')
+        .select(`
+          id,
+          data_abertura,
+          valor_inicial,
+          observacoes,
+          ativo,
+          data_fechamento,
+          valor_final,
+          total_vendas,
+          total_sangrias,
+          total_suprimentos,
+          valor_esperado,
+          diferenca,
+          observacoes_fechamento,
+          usuario_id,
+          usuario_fechamento
+        `)
+        .eq('ativo', true)
+        .order('data_abertura', { ascending: false })
+        .limit(1);
+
+      if (caixaError && caixaError.code !== 'PGRST116') {
+        throw caixaError;
+      }
+
+      const caixaAtivo = caixaAberto && caixaAberto.length > 0 ? caixaAberto[0] : null;
+
+      if (caixaAtivo) {
+        // 2. Buscar dados dos usuários de abertura e fechamento
+        let usuarioAbertura = null;
+        let usuarioFechamento = null;
+
+        if (caixaAtivo.usuario_id) {
+          const { data: userAbertura } = await supabase
+            .from('usuarios')
+            .select('nome_completo, email')
+            .eq('id', caixaAtivo.usuario_id)
+            .single();
+          usuarioAbertura = userAbertura;
         }
-      ]);
-      
-      // Mock de resumo de vendas
-      setResumoVendas({
-        total_vendas: 1500.50,
-        vendas_dinheiro: 800.00,
-        vendas_cartao: 500.50,
-        vendas_pix: 200.00,
-        vendas_outros: 0.00,
-        quantidade_vendas: 15
-      });
+
+        if (caixaAtivo.usuario_fechamento) {
+          const { data: userFechamento } = await supabase
+            .from('usuarios')
+            .select('nome_completo, email')
+            .eq('id', caixaAtivo.usuario_fechamento)
+            .single();
+          usuarioFechamento = userFechamento;
+        }
+
+        // 3. Calcular vendas do dia atual
+        const hoje = new Date().toISOString().split('T')[0];
+        const { data: vendasHoje, error: vendasError } = await supabase
+          .from('vendas')
+          .select('total, status')
+          .gte('data_venda', `${hoje}T00:00:00.000Z`)
+          .lt('data_venda', `${hoje}T23:59:59.999Z`)
+          .eq('status', 'finalizada');
+
+        if (vendasError) {
+          console.warn('Erro ao buscar vendas:', vendasError);
+        }
+
+        // 4. Calcular vendas por forma de pagamento
+        const { data: pagamentosHoje, error: pagamentosError } = await supabase
+          .from('pagamentos_venda')
+          .select('forma_pagamento, valor')
+          .gte('data_pagamento', `${hoje}T00:00:00.000Z`)
+          .lt('data_pagamento', `${hoje}T23:59:59.999Z`);
+
+        if (pagamentosError) {
+          console.warn('Erro ao buscar pagamentos:', pagamentosError);
+        }
+
+        // 5. Buscar movimentações do caixa (apenas se houver caixa ativo)
+        let movimentacoes = [];
+        let movError = null;
+
+        if (caixaAtivo && caixaAtivo.data_abertura) {
+          // Tentar primeiro com movimentacoes_caixa
+          try {
+            const { data, error } = await supabase
+              .from('movimentacoes_caixa')
+              .select(`
+                id,
+                data_movimentacao,
+                tipo_movimentacao,
+                descricao,
+                valor,
+                observacoes,
+                usuario_id,
+                usuarios(nome_completo, email)
+              `)
+              .gte('data_movimentacao', caixaAtivo.data_abertura)
+              .eq('is_deleted', false)
+              .order('data_movimentacao', { ascending: false });
+
+            if (!error) {
+              movimentacoes = data || [];
+            } else if (error.code === 'PGRST116') {
+              // Tabela movimentacoes_caixa não existe, tentar movimentos_caixa
+              const { data: data2, error: error2 } = await supabase
+                .from('movimentos_caixa')
+                .select(`
+                  id,
+                  created_at,
+                  tipo,
+                  descricao,
+                  valor,
+                  usuarios(nome_completo, email)
+                `)
+                .gte('created_at', caixaAtivo.data_abertura)
+                .order('created_at', { ascending: false });
+
+              if (!error2) {
+                // Mapear para estrutura esperada
+                movimentacoes = data2?.map(m => ({
+                  id: m.id,
+                  data_movimentacao: m.created_at,
+                  tipo_movimentacao: m.tipo,
+                  descricao: m.descricao,
+                  valor: m.valor,
+                  usuarios: m.usuarios
+                })) || [];
+              } else {
+                movError = error2;
+              }
+            } else {
+              movError = error;
+            }
+          } catch (e) {
+            console.warn('Erro ao buscar movimentações:', e);
+            movimentacoes = [];
+          }
+
+          if (movError) {
+            console.warn('Erro ao buscar movimentações:', movError);
+          }
+        }
+
+        // Processar dados
+        const totalVendas = vendasHoje?.reduce((sum, v) => sum + Number(v.total), 0) || 0;
+        const quantidadeVendas = vendasHoje?.length || 0;
+
+        // Calcular vendas por forma de pagamento
+        const vendasDinheiro = pagamentosHoje
+          ?.filter(p => p.forma_pagamento === 'dinheiro')
+          .reduce((sum, p) => sum + Number(p.valor), 0) || 0;
+        
+        const vendasCartao = pagamentosHoje
+          ?.filter(p => ['cartao_debito', 'cartao_credito'].includes(p.forma_pagamento))
+          .reduce((sum, p) => sum + Number(p.valor), 0) || 0;
+        
+        const vendasPix = pagamentosHoje
+          ?.filter(p => p.forma_pagamento === 'pix')
+          .reduce((sum, p) => sum + Number(p.valor), 0) || 0;
+
+        // Calcular sangrias e suprimentos
+        const totalSangrias = movimentacoes
+          ?.filter(m => m.tipo_movimentacao === 'sangria')
+          .reduce((sum, m) => sum + Number(m.valor), 0) || 0;
+        
+        const totalSuprimentos = movimentacoes
+          ?.filter(m => m.tipo_movimentacao === 'suprimento')
+          .reduce((sum, m) => sum + Number(m.valor), 0) || 0;
+
+        // Montar objeto do caixa
+        const caixaStatus: CaixaStatus = {
+          id: caixaAtivo.id,
+          data_abertura: caixaAtivo.data_abertura,
+          data_fechamento: caixaAtivo.data_fechamento,
+          usuario_abertura: usuarioAbertura?.nome_completo || usuarioAbertura?.email || 'Usuário',
+          usuario_fechamento: usuarioFechamento?.nome_completo || usuarioFechamento?.email,
+          valor_inicial: Number(caixaAtivo.valor_inicial),
+          valor_final: caixaAtivo.valor_final ? Number(caixaAtivo.valor_final) : undefined,
+          valor_vendas: totalVendas,
+          valor_sangrias: totalSangrias,
+          valor_suprimentos: totalSuprimentos,
+          valor_calculado: Number(caixaAtivo.valor_inicial) + totalVendas - totalSangrias + totalSuprimentos,
+          status: caixaAtivo.ativo ? 'aberto' : 'fechado',
+          observacoes_abertura: caixaAtivo.observacoes,
+          observacoes_fechamento: caixaAtivo.observacoes_fechamento
+        };
+
+        // Resumo de vendas
+        setResumoVendas({
+          total_vendas: totalVendas,
+          vendas_dinheiro: vendasDinheiro,
+          vendas_cartao: vendasCartao,
+          vendas_pix: vendasPix,
+          vendas_outros: totalVendas - vendasDinheiro - vendasCartao - vendasPix,
+          quantidade_vendas: quantidadeVendas
+        });
+
+        // Movimentos formatados
+        const movimentosFormatados: MovimentoCaixa[] = movimentacoes?.map(m => ({
+          id: m.id,
+          tipo: m.tipo_movimentacao as 'sangria' | 'suprimento',
+          valor: Number(m.valor),
+          descricao: m.descricao,
+          usuario: m.usuarios?.nome_completo || m.usuarios?.email || 'Usuário',
+          data_movimento: m.data_movimentacao
+        })) || [];
+
+        setMovimentos(movimentosFormatados);
+
+      } else {
+        // Não há caixa aberto
+        setResumoVendas({
+          total_vendas: 0,
+          vendas_dinheiro: 0,
+          vendas_cartao: 0,
+          vendas_pix: 0,
+          vendas_outros: 0,
+          quantidade_vendas: 0
+        });
+
+        setMovimentos([]);
+      }
       
     } catch (error) {
       console.error('Erro ao carregar status do caixa:', error);
@@ -169,152 +362,172 @@ export default function ControleCaixa() {
   };
 
   const handleAbrirCaixa = async () => {
-    try {
-      if (!valorInicialAbertura || Number(valorInicialAbertura) <= 0) {
-        toast({
-          title: 'Erro',
-          description: 'Informe um valor inicial válido',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      toast({
-        title: 'Sucesso',
-        description: 'Caixa aberto com sucesso'
-      });
-
-      setAberturaOpen(false);
-      setValorInicialAbertura('');
-      setObservacoesAbertura('');
-      loadCaixaStatus();
-
-    } catch (error) {
-      console.error('Erro ao abrir caixa:', error);
+    if (!valorInicialAbertura || Number(valorInicialAbertura) <= 0) {
       toast({
         title: 'Erro',
-        description: 'Erro ao abrir caixa',
+        description: 'Informe um valor inicial válido',
         variant: 'destructive'
       });
+      return;
     }
+
+    if (!usuario) {
+      toast({
+        title: 'Erro',
+        description: 'Usuário não identificado',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Usar o hook para abrir caixa via Edge Function
+    abrirCaixa({
+      valor_inicial: Number(valorInicialAbertura),
+      observacoes: observacoesAbertura || undefined
+    });
+
+    // Limpar formulário se sucesso (o toast já é tratado pelo hook)
+    setAberturaOpen(false);
+    setValorInicialAbertura('');
+    setObservacoesAbertura('');
+    
+    // Recarregar dados complementares
+    loadCaixaStatus();
   };
 
   const handleFecharCaixa = async () => {
-    try {
-      if (!valorFinalFechamento || Number(valorFinalFechamento) <= 0) {
-        toast({
-          title: 'Erro',
-          description: 'Informe um valor final válido',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      toast({
-        title: 'Sucesso',
-        description: 'Caixa fechado com sucesso'
-      });
-
-      setFechamentoOpen(false);
-      setValorFinalFechamento('');
-      setObservacoesFechamento('');
-      loadCaixaStatus();
-
-    } catch (error) {
-      console.error('Erro ao fechar caixa:', error);
+    if (!valorFinalFechamento || Number(valorFinalFechamento) <= 0) {
       toast({
         title: 'Erro',
-        description: 'Erro ao fechar caixa',
+        description: 'Informe um valor final válido',
         variant: 'destructive'
       });
+      return;
     }
+
+    if (!caixaAtivo?.id) {
+      toast({
+        title: 'Erro',
+        description: 'Caixa não identificado',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!usuario) {
+      toast({
+        title: 'Erro',
+        description: 'Usuário não identificado',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Usar o hook para fechar caixa via Edge Function
+    fecharCaixa({
+      caixa_id: caixaAtivo.id,
+      valor_final: Number(valorFinalFechamento),
+      observacoes: observacoesFechamento || undefined
+    });
+
+    // Limpar formulário se sucesso (o toast já é tratado pelo hook)
+    setFechamentoOpen(false);
+    setValorFinalFechamento('');
+    setObservacoesFechamento('');
+    
+    // Recarregar dados complementares
+    loadCaixaStatus();
   };
 
   const handleMovimentoCaixa = async () => {
-    try {
-      if (!valorMovimento || Number(valorMovimento) <= 0) {
-        toast({
-          title: 'Erro',
-          description: 'Informe um valor válido',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      if (!descricaoMovimento.trim()) {
-        toast({
-          title: 'Erro',
-          description: 'Informe a descrição do movimento',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      toast({
-        title: 'Sucesso',
-        description: `${tipoMovimento === 'sangria' ? 'Sangria' : 'Suprimento'} registrado com sucesso`
-      });
-
-      setMovimentoOpen(false);
-      setValorMovimento('');
-      setDescricaoMovimento('');
-      loadCaixaStatus();
-
-    } catch (error) {
-      console.error('Erro ao registrar movimento:', error);
+    if (!valorMovimento || Number(valorMovimento) <= 0) {
       toast({
         title: 'Erro',
-        description: 'Erro ao registrar movimento',
+        description: 'Informe um valor válido',
         variant: 'destructive'
       });
+      return;
     }
+
+    if (!descricaoMovimento.trim()) {
+      toast({
+        title: 'Erro',
+        description: 'Informe a descrição do movimento',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!usuario) {
+      toast({
+        title: 'Erro',
+        description: 'Usuário não identificado',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Usar o hook para registrar movimento via service
+    if (tipoMovimento === 'sangria') {
+      registrarSangria(Number(valorMovimento), descricaoMovimento);
+    } else {
+      registrarSuprimento(Number(valorMovimento), descricaoMovimento);
+    }
+
+    // Limpar formulário se sucesso (o toast já é tratado pelo hook)
+    setMovimentoOpen(false);
+    setValorMovimento('');
+    setDescricaoMovimento('');
+    
+    // Recarregar dados complementares
+    loadCaixaStatus();
   };
 
-  const valorAtualCaixa = caixaAtual 
-    ? caixaAtual.valor_inicial + caixaAtual.valor_vendas - caixaAtual.valor_sangrias + caixaAtual.valor_suprimentos
+  const valorAtualCaixa = isCaixaAberto && caixaAtivo && resumoVendas
+    ? caixaAtivo.valor_inicial + resumoVendas.total_vendas - (movimentos.filter(m => m.tipo === 'sangria').reduce((sum, m) => sum + m.valor, 0)) + (movimentos.filter(m => m.tipo === 'suprimento').reduce((sum, m) => sum + m.valor, 0))
     : 0;
 
-  const diferenca = caixaAtual && valorFinalFechamento 
-    ? Number(valorFinalFechamento) - valorAtualCaixa 
+  const diferenca = isCaixaAberto && caixaAtivo && valorFinalFechamento
+    ? Number(valorFinalFechamento) - valorAtualCaixa
     : 0;
 
   // Métricas do caixa
   const caixaMetrics = [
     {
       label: 'Valor Atual',
-      value: loading ? '-' : formatarDinheiro(valorAtualCaixa),
-      change: '+12.5%',
+      value: isCaixaHookLoading ? '-' : formatarDinheiro(valorAtualCaixa),
+      change: isCaixaAberto ? 'Caixa Aberto' : 'Caixa Fechado',
       trend: 'up' as const,
       icon: DollarSign,
       color: 'text-green-600',
-      isLoading: loading
+      isLoading: isCaixaHookLoading
     },
     {
       label: 'Vendas do Dia',
-      value: loading ? '-' : formatarDinheiro(resumoVendas?.total_vendas || 0),
+      value: isCaixaHookLoading ? '-' : formatarDinheiro(resumoVendas?.total_vendas || 0),
       change: `${resumoVendas?.quantidade_vendas || 0} vendas`,
       trend: 'up' as const,
       icon: TrendingUp,
       color: 'text-blue-600',
-      isLoading: loading
+      isLoading: isCaixaHookLoading
     },
     {
       label: 'Sangrias',
-      value: loading ? '-' : formatarDinheiro(caixaAtual?.valor_sangrias || 0),
-      change: '-5.2%',
+      value: isCaixaHookLoading ? '-' : formatarDinheiro(movimentos.filter(m => m.tipo === 'sangria').reduce((sum, m) => sum + m.valor, 0)),
+      change: movimentos.filter(m => m.tipo === 'sangria').length + ' movimentos',
       trend: 'down' as const,
       icon: TrendingDown,
       color: 'text-red-600',
-      isLoading: loading
+      isLoading: isCaixaHookLoading
     },
     {
       label: 'Suprimentos',
-      value: loading ? '-' : formatarDinheiro(caixaAtual?.valor_suprimentos || 0),
-      change: '+8.1%',
+      value: isCaixaHookLoading ? '-' : formatarDinheiro(movimentos.filter(m => m.tipo === 'suprimento').reduce((sum, m) => sum + m.valor, 0)),
+      change: movimentos.filter(m => m.tipo === 'suprimento').length + ' movimentos',
       trend: 'up' as const,
       icon: TrendingUp,
       color: 'text-purple-600',
-      isLoading: loading
+      isLoading: isCaixaHookLoading
     }
   ];
 
@@ -333,12 +546,12 @@ export default function ControleCaixa() {
                     <h1 className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
                       Controle de Caixa
                     </h1>
-                    {caixaAtual && (
+                    {caixaAtivo && (
                       <Badge 
-                        variant={caixaAtual.status === 'aberto' ? 'default' : 'secondary'}
+                        variant={isCaixaAberto ? 'default' : 'secondary'}
                         className="ml-4"
                       >
-                        {caixaAtual.status === 'aberto' ? 'Caixa Aberto' : 'Caixa Fechado'}
+                        {isCaixaAberto ? 'Caixa Aberto' : 'Caixa Fechado'}
                       </Badge>
                     )}
                   </div>
@@ -357,7 +570,7 @@ export default function ControleCaixa() {
 
               {/* Status e Ações Rápidas */}
               <div className="mt-8 flex flex-col sm:flex-row gap-4">
-                {caixaAtual?.status === 'fechado' && (
+                {!isCaixaAberto && (
                   <Dialog open={aberturaOpen} onOpenChange={setAberturaOpen}>
                     <DialogTrigger asChild>
                       <Button size="lg" className="h-12 px-8">
@@ -397,7 +610,7 @@ export default function ControleCaixa() {
                   </Dialog>
                 )}
 
-                {caixaAtual?.status === 'aberto' && (
+                {isCaixaAberto && (
                   <>
                     <Dialog open={movimentoOpen} onOpenChange={setMovimentoOpen}>
                       <DialogTrigger asChild>
@@ -543,7 +756,7 @@ export default function ControleCaixa() {
         {/* Conteúdo Principal */}
         <div className="px-6 pb-16">
           <div className="mx-auto max-w-7xl space-y-8">
-            {caixaAtual?.status === 'aberto' && (
+            {isCaixaAberto && (
               <div className="grid gap-6 lg:grid-cols-3">
                 {/* Resumo do Caixa - 2/3 da largura */}
                 <div className="lg:col-span-2 space-y-6">
@@ -562,7 +775,7 @@ export default function ControleCaixa() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                           <div className="text-2xl font-bold text-blue-600">
-                            {formatarDinheiro(caixaAtual?.valor_inicial || 0)}
+                            {formatarDinheiro(caixaAtivo?.valor_inicial || 0)}
                           </div>
                           <div className="text-sm text-muted-foreground">Valor Inicial</div>
                         </div>
@@ -574,13 +787,13 @@ export default function ControleCaixa() {
                         </div>
                         <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
                           <div className="text-2xl font-bold text-red-600">
-                            {formatarDinheiro(caixaAtual?.valor_sangrias || 0)}
+                            {formatarDinheiro(movimentos.filter(m => m.tipo === 'sangria').reduce((sum, m) => sum + m.valor, 0))}
                           </div>
                           <div className="text-sm text-muted-foreground">Sangrias</div>
                         </div>
                         <div className="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
                           <div className="text-2xl font-bold text-purple-600">
-                            {formatarDinheiro(caixaAtual?.valor_suprimentos || 0)}
+                            {formatarDinheiro(movimentos.filter(m => m.tipo === 'suprimento').reduce((sum, m) => sum + m.valor, 0))}
                           </div>
                           <div className="text-sm text-muted-foreground">Suprimentos</div>
                         </div>
@@ -664,18 +877,18 @@ export default function ControleCaixa() {
                     <CardContent className="space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">Aberto por:</span>
-                        <span className="text-sm font-medium">{caixaAtual?.usuario_abertura}</span>
+                        <span className="text-sm font-medium">{caixaAtivo?.usuario?.nome || 'Usuário'}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">Data/Hora:</span>
                         <span className="text-sm font-medium">
-                          {format(new Date(caixaAtual?.data_abertura || ''), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                          {caixaAtivo?.data_abertura ? format(new Date(caixaAtivo.data_abertura), 'dd/MM/yyyy HH:mm', { locale: ptBR }) : '-'}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">Status:</span>
-                        <Badge variant={caixaAtual?.status === 'aberto' ? 'default' : 'secondary'}>
-                          {caixaAtual?.status === 'aberto' ? 'Aberto' : 'Fechado'}
+                        <Badge variant={isCaixaAberto ? 'default' : 'secondary'}>
+                          {isCaixaAberto ? 'Aberto' : 'Fechado'}
                         </Badge>
                       </div>
                     </CardContent>
@@ -753,24 +966,38 @@ export default function ControleCaixa() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Eficiência de Vendas</span>
-                      <span className="text-sm text-muted-foreground">85%</span>
+                      <span className="text-sm font-medium">Status do Caixa</span>
+                      <span className="text-sm text-muted-foreground">
+                        {isCaixaAberto ? 'Operacional' : 'Fechado'}
+                      </span>
                     </div>
-                    <Progress value={85} className="h-2" indicatorColor="bg-emerald-500" />
+                    <Progress 
+                      value={isCaixaAberto ? 100 : 0} 
+                      className="h-2" 
+                      indicatorColor={isCaixaAberto ? "bg-emerald-500" : "bg-gray-500"} 
+                    />
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Controle de Movimento</span>
-                      <span className="text-sm text-muted-foreground">92%</span>
+                      <span className="text-sm font-medium">Movimentações Hoje</span>
+                      <span className="text-sm text-muted-foreground">{movimentos.length} movimentos</span>
                     </div>
-                    <Progress value={92} className="h-2" indicatorColor="bg-blue-500" />
+                    <Progress 
+                      value={Math.min(movimentos.length * 10, 100)} 
+                      className="h-2" 
+                      indicatorColor="bg-blue-500" 
+                    />
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Acuracidade do Caixa</span>
-                      <span className="text-sm text-muted-foreground">98%</span>
+                      <span className="text-sm font-medium">Vendas Registradas</span>
+                      <span className="text-sm text-muted-foreground">{resumoVendas?.quantidade_vendas || 0} vendas</span>
                     </div>
-                    <Progress value={98} className="h-2" indicatorColor="bg-purple-500" />
+                    <Progress 
+                      value={Math.min((resumoVendas?.quantidade_vendas || 0) * 5, 100)} 
+                      className="h-2" 
+                      indicatorColor="bg-purple-500" 
+                    />
                   </div>
                 </div>
               </CardContent>

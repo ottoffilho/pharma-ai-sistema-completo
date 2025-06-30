@@ -100,7 +100,6 @@ const InsumosPage: React.FC = () => {
   
   // States para filtros e busca
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
   
@@ -191,9 +190,7 @@ const InsumosPage: React.FC = () => {
   // Filtrar insumos baseado na busca e filtros
   const filteredInsumos = insumos?.filter(insumo => {
     const matchesSearch = insumo.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         insumo.tipo?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesType = filterType === 'all' || insumo.tipo === filterType;
+                         insumo.categoria?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesCategory = filterCategory === 'all' || insumo.categoria === filterCategory;
     
@@ -201,7 +198,7 @@ const InsumosPage: React.FC = () => {
                          (filterStatus === 'low_stock' && insumo.estoque_atual <= insumo.estoque_minimo) ||
                          (filterStatus === 'normal' && insumo.estoque_atual > insumo.estoque_minimo);
     
-    return matchesSearch && matchesType && matchesCategory && matchesStatus;
+    return matchesSearch && matchesCategory && matchesStatus;
   }) || [];
 
   // Calcular métricas por categoria
@@ -408,17 +405,7 @@ const InsumosPage: React.FC = () => {
                     />
                   </div>
                   
-                  <Select value={filterType} onValueChange={setFilterType}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos os tipos</SelectItem>
-                      <SelectItem value="principio_ativo">Princípio Ativo</SelectItem>
-                      <SelectItem value="excipiente">Excipiente</SelectItem>
-                      <SelectItem value="materia_prima">Matéria Prima</SelectItem>
-                    </SelectContent>
-                  </Select>
+
 
                   <Select value={filterCategory} onValueChange={setFilterCategory}>
                     <SelectTrigger className="w-[180px]">
@@ -510,7 +497,7 @@ const InsumosPage: React.FC = () => {
                   <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Nenhum produto encontrado</h3>
                   <p className="text-muted-foreground mb-4">
-                    {searchTerm || filterType !== 'all' || filterCategory !== 'all' || filterStatus !== 'all' 
+                    {searchTerm || filterCategory !== 'all' || filterStatus !== 'all' 
                       ? 'Tente ajustar os filtros de busca'
                       : 'Comece criando seu primeiro produto'
                     }
@@ -526,7 +513,6 @@ const InsumosPage: React.FC = () => {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Produto</TableHead>
-                        <TableHead>Tipo</TableHead>
                         <TableHead>Categoria</TableHead>
                         <TableHead>Estoque</TableHead>
                         <TableHead>Custo Unit.</TableHead>
@@ -552,11 +538,6 @@ const InsumosPage: React.FC = () => {
                                   <p className="text-sm text-muted-foreground">{insumo.unidade_medida}</p>
                                 </div>
                               </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="capitalize">
-                                {insumo.tipo?.replace('_', ' ') || 'Não definido'}
-                              </Badge>
                             </TableCell>
                             <TableCell>
                               <Badge variant="secondary" className="capitalize">

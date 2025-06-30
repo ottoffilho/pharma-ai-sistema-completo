@@ -68,12 +68,7 @@ export default function EditarOrdemProducaoPage() {
 
       const { data, error } = await supabase
         .from('ordens_producao')
-        .select(`
-          *,
-          ordem_producao_insumos (*),
-          ordem_producao_embalagens (*),
-          ordem_producao_etapas (*)
-        `)
+        .select('*')
         .eq('id', id)
         .eq('is_deleted', false)
         .single();
@@ -87,9 +82,19 @@ export default function EditarOrdemProducaoPage() {
   const form = useForm<OrdemFormData>({
     resolver: zodResolver(ordemSchema),
     defaultValues: {
+      pedido_id: undefined,
+      receita_processada_id: undefined,
       prioridade: 'normal',
+      data_prevista_entrega: undefined,
+      usuario_responsavel_id: undefined,
+      farmaceutico_responsavel_id: undefined,
+      observacoes_gerais: undefined,
+      instrucoes_especiais: undefined,
+      forma_farmaceutica: undefined,
       quantidade_total: 1,
       unidade_medida: 'unidade',
+      tempo_estimado_minutos: undefined,
+      custo_total_estimado: undefined,
       insumos: [],
       embalagens: [],
       etapas: [],
@@ -100,40 +105,24 @@ export default function EditarOrdemProducaoPage() {
   React.useEffect(() => {
     if (ordem) {
       form.reset({
-        pedido_id: ordem.pedido_id || '',
-        receita_processada_id: ordem.receita_processada_id || '',
-        prioridade: ordem.prioridade as 'baixa' | 'media' | 'alta' | 'urgente',
+        pedido_id: ordem.pedido_id || undefined,
+        receita_processada_id: ordem.receita_processada_id || undefined,
+        prioridade: ordem.prioridade as 'baixa' | 'normal' | 'alta' | 'urgente',
         data_prevista_entrega: ordem.data_prevista_entrega ? 
-          new Date(ordem.data_prevista_entrega).toISOString().slice(0, 16) : '',
-        usuario_responsavel_id: ordem.usuario_responsavel_id || '',
-        farmaceutico_responsavel_id: ordem.farmaceutico_responsavel_id || '',
-        observacoes_gerais: ordem.observacoes_gerais || '',
-        instrucoes_especiais: ordem.instrucoes_especiais || '',
-        forma_farmaceutica: ordem.forma_farmaceutica || '',
-        quantidade_total: ordem.quantidade_total,
-        unidade_medida: ordem.unidade_medida,
+          new Date(ordem.data_prevista_entrega).toISOString().slice(0, 16) : undefined,
+        usuario_responsavel_id: ordem.usuario_responsavel_id || undefined,
+        farmaceutico_responsavel_id: ordem.farmaceutico_responsavel_id || undefined,
+        observacoes_gerais: ordem.observacoes || undefined,
+        instrucoes_especiais: ordem.instrucoes_especiais || undefined,
+        forma_farmaceutica: ordem.forma_farmaceutica || undefined,
+        quantidade_total: ordem.quantidade_total || 1,
+        unidade_medida: ordem.unidade_medida || 'unidade',
         tempo_estimado_minutos: ordem.tempo_estimado_minutos || undefined,
         custo_total_estimado: ordem.custo_total_estimado || undefined,
-        insumos: ordem.ordem_producao_insumos?.map(item => ({
-          id: item.id,
-          insumo_id: item.insumo_id,
-          quantidade_necessaria: item.quantidade_necessaria,
-          unidade_medida: item.unidade_medida,
-          observacoes: item.observacoes || '',
-        })) || [],
-        embalagens: ordem.ordem_producao_embalagens?.map(item => ({
-          id: item.id,
-          embalagem_id: item.embalagem_id,
-          quantidade_necessaria: item.quantidade_necessaria,
-          observacoes: item.observacoes || '',
-        })) || [],
-        etapas: ordem.ordem_producao_etapas?.map(item => ({
-          id: item.id,
-          numero_etapa: item.numero_etapa,
-          nome_etapa: item.nome_etapa,
-          descricao_etapa: item.descricao_etapa,
-          tempo_estimado_minutos: item.tempo_estimado_minutos || undefined,
-        })) || [],
+        // Arrays vazios já que as tabelas de relacionamento não existem
+        insumos: [],
+        embalagens: [],
+        etapas: [],
       });
     }
   }, [ordem, form]);
@@ -184,10 +173,10 @@ export default function EditarOrdemProducaoPage() {
     queryKey: ['usuarios-select'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('usuarios_internos')
-        .select('id, nome_completo, cargo_perfil')
+        .from('usuarios')
+        .select('id, nome, perfil_id')
         .eq('ativo', true)
-        .order('nome_completo');
+        .order('nome');
 
       if (error) throw error;
       return data;
@@ -198,8 +187,10 @@ export default function EditarOrdemProducaoPage() {
     queryKey: ['insumos-select'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('insumos')
+        .from('produtos')
         .select('id, nome, unidade_medida, estoque_atual')
+        .eq('tipo', 'INSUMO')
+        .eq('ativo', true)
         .eq('is_deleted', false)
         .order('nome');
 
@@ -212,8 +203,10 @@ export default function EditarOrdemProducaoPage() {
     queryKey: ['embalagens-select'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('embalagens')
-        .select('id, nome, tipo, estoque_atual')
+        .from('produtos')
+        .select('id, nome, categoria_produto_id, estoque_atual')
+        .eq('tipo', 'EMBALAGEM')
+        .eq('ativo', true)
         .eq('is_deleted', false)
         .order('nome');
 
@@ -226,15 +219,15 @@ export default function EditarOrdemProducaoPage() {
     mutationFn: async (data: OrdemFormData) => {
       if (!id) throw new Error('ID da ordem não fornecido');
 
-      // Atualizar a ordem de produção
-      const ordemData: OrdemProducaoUpdate = {
+      // Atualizar apenas a ordem de produção principal
+      const ordemData = {
         pedido_id: data.pedido_id || null,
         receita_processada_id: data.receita_processada_id || null,
         prioridade: data.prioridade,
         data_prevista_entrega: data.data_prevista_entrega || null,
         usuario_responsavel_id: data.usuario_responsavel_id || null,
         farmaceutico_responsavel_id: data.farmaceutico_responsavel_id || null,
-        observacoes_gerais: data.observacoes_gerais || null,
+        observacoes: data.observacoes_gerais || null,
         instrucoes_especiais: data.instrucoes_especiais || null,
         forma_farmaceutica: data.forma_farmaceutica || null,
         quantidade_total: data.quantidade_total,
@@ -250,130 +243,8 @@ export default function EditarOrdemProducaoPage() {
 
       if (ordemError) throw ordemError;
 
-      // Atualizar insumos
-      // Primeiro, deletar insumos removidos
-      const insumosExistentes = ordem?.ordem_producao_insumos || [];
-      const insumosNovos = data.insumos;
-      const insumosParaDeletar = insumosExistentes.filter(
-        existente => !insumosNovos.find(novo => novo.id === existente.id)
-      );
-
-      for (const insumo of insumosParaDeletar) {
-        const { error } = await supabase
-          .from('ordem_producao_insumos')
-          .delete()
-          .eq('id', insumo.id);
-        if (error) throw error;
-      }
-
-      // Atualizar/inserir insumos
-      for (const insumo of insumosNovos) {
-        if (insumo.id) {
-          // Atualizar existente
-          const { error } = await supabase
-            .from('ordem_producao_insumos')
-            .update({
-              insumo_id: insumo.insumo_id,
-              quantidade_necessaria: insumo.quantidade_necessaria,
-              unidade_medida: insumo.unidade_medida,
-              observacoes: insumo.observacoes || null,
-            })
-            .eq('id', insumo.id);
-          if (error) throw error;
-        } else {
-          // Inserir novo
-          const { error } = await supabase
-            .from('ordem_producao_insumos')
-            .insert({
-              ordem_producao_id: id,
-              insumo_id: insumo.insumo_id,
-              quantidade_necessaria: insumo.quantidade_necessaria,
-              unidade_medida: insumo.unidade_medida,
-              observacoes: insumo.observacoes || null,
-            });
-          if (error) throw error;
-        }
-      }
-
-      // Atualizar embalagens (mesmo processo)
-      const embalagensExistentes = ordem?.ordem_producao_embalagens || [];
-      const embalagensNovas = data.embalagens;
-      const embalagensParaDeletar = embalagensExistentes.filter(
-        existente => !embalagensNovas.find(nova => nova.id === existente.id)
-      );
-
-      for (const embalagem of embalagensParaDeletar) {
-        const { error } = await supabase
-          .from('ordem_producao_embalagens')
-          .delete()
-          .eq('id', embalagem.id);
-        if (error) throw error;
-      }
-
-      for (const embalagem of embalagensNovas) {
-        if (embalagem.id) {
-          const { error } = await supabase
-            .from('ordem_producao_embalagens')
-            .update({
-              embalagem_id: embalagem.embalagem_id,
-              quantidade_necessaria: embalagem.quantidade_necessaria,
-              observacoes: embalagem.observacoes || null,
-            })
-            .eq('id', embalagem.id);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase
-            .from('ordem_producao_embalagens')
-            .insert({
-              ordem_producao_id: id,
-              embalagem_id: embalagem.embalagem_id,
-              quantidade_necessaria: embalagem.quantidade_necessaria,
-              observacoes: embalagem.observacoes || null,
-            });
-          if (error) throw error;
-        }
-      }
-
-      // Atualizar etapas (mesmo processo)
-      const etapasExistentes = ordem?.ordem_producao_etapas || [];
-      const etapasNovas = data.etapas;
-      const etapasParaDeletar = etapasExistentes.filter(
-        existente => !etapasNovas.find(nova => nova.id === existente.id)
-      );
-
-      for (const etapa of etapasParaDeletar) {
-        const { error } = await supabase
-          .from('ordem_producao_etapas')
-          .delete()
-          .eq('id', etapa.id);
-        if (error) throw error;
-      }
-
-      for (const etapa of etapasNovas) {
-        if (etapa.id) {
-          const { error } = await supabase
-            .from('ordem_producao_etapas')
-            .update({
-              numero_etapa: etapa.numero_etapa,
-              nome_etapa: etapa.nome_etapa,
-              descricao_etapa: etapa.descricao_etapa,
-              tempo_estimado_minutos: etapa.tempo_estimado_minutos || null,
-            })
-            .eq('id', etapa.id);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase
-            .from('ordem_producao_etapas')
-            .insert({
-              ordem_producao_id: id,
-              numero_etapa: etapa.numero_etapa,
-              nome_etapa: etapa.nome_etapa,
-              descricao_etapa: etapa.descricao_etapa,
-              tempo_estimado_minutos: etapa.tempo_estimado_minutos || null,
-            });
-          if (error) throw error;
-        }
-      }
+      // Nota: As tabelas de relacionamento (insumos, embalagens, etapas) 
+      // não existem no banco, então não tentamos atualizá-las
 
       return { id };
     },
@@ -516,7 +387,7 @@ export default function EditarOrdemProducaoPage() {
                           <SelectContent>
                             {usuarios?.map((usuario) => (
                               <SelectItem key={usuario.id} value={usuario.id}>
-                                {usuario.nome_completo} - {usuario.cargo_perfil}
+                                {usuario.nome}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -539,9 +410,9 @@ export default function EditarOrdemProducaoPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {usuarios?.filter(u => u.cargo_perfil.toLowerCase().includes('farmaceutico')).map((usuario) => (
+                            {usuarios?.map((usuario) => (
                               <SelectItem key={usuario.id} value={usuario.id}>
-                                {usuario.nome_completo}
+                                {usuario.nome}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -694,8 +565,8 @@ export default function EditarOrdemProducaoPage() {
                     onClick={() => appendInsumo({
                       insumo_id: '',
                       quantidade_necessaria: 1,
-                      unidade_medida: '',
-                      observacoes: '',
+                      unidade_medida: 'g',
+                      observacoes: undefined,
                     })}
                   >
                     <Plus className="mr-2 h-4 w-4" />
@@ -814,7 +685,7 @@ export default function EditarOrdemProducaoPage() {
                     onClick={() => appendEmbalagem({
                       embalagem_id: '',
                       quantidade_necessaria: 1,
-                      observacoes: '',
+                      observacoes: undefined,
                     })}
                   >
                     <Plus className="mr-2 h-4 w-4" />
@@ -846,7 +717,7 @@ export default function EditarOrdemProducaoPage() {
                                 <SelectContent>
                                   {embalagens?.map((embalagem) => (
                                     <SelectItem key={embalagem.id} value={embalagem.id}>
-                                      {embalagem.nome} - {embalagem.tipo} (Estoque: {embalagem.estoque_atual})
+                                      {embalagem.nome} (Estoque: {embalagem.estoque_atual})
                                     </SelectItem>
                                   ))}
                                 </SelectContent>

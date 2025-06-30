@@ -143,8 +143,8 @@ export default function NovaOrdemProducaoPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('insumos')
-        .select('id, nome, unidade_medida, estoque_atual')
-        .eq('is_deleted', false)
+        .select('id, nome, unidade, estoque_atual')
+        .eq('ativo', true)
         .order('nome');
 
       if (error) throw error;
@@ -158,7 +158,7 @@ export default function NovaOrdemProducaoPage() {
       const { data, error } = await supabase
         .from('embalagens')
         .select('id, nome, tipo, estoque_atual')
-        .eq('is_deleted', false)
+        .eq('ativo', true)
         .order('nome');
 
       if (error) throw error;

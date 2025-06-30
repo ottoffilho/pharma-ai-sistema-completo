@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n-pharma-ai
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Configurações básicas
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-pharma2025}
+      
+      # URLs e domínios
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:5678}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      
+      # Configurações de segurança
+      - N8N_JWT_AUTH_ACTIVE=true
+      - N8N_JWT_AUTH_HEADER=authorization
+      - N8N_SECURE_COOKIE=false
+      
+      # Configurações de execução
+      - EXECUTIONS_PROCESS=main
+      - EXECUTIONS_MODE=regular
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+      - EXECUTIONS_DATA_MAX_AGE=168
+      
+      # Logs
+      - N8N_LOG_LEVEL=info
+      - N8N_LOG_OUTPUT=console
+      
+      # Configurações específicas Pharma.AI
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN}
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM}
+      
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/opt/n8n/workflows:ro
+      - ./scripts:/opt/n8n/scripts:ro
+    
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Opcional: Redis para cache e filas (produção)
+  redis:
+    image: redis:7-alpine
+    container_name: redis-n8n-pharma
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-pharma2025redis}
+    command: redis-server --requirepass ${REDIS_PASSWORD:-pharma2025redis}
+    profiles:
+      - production
+
+  # Opcional: PostgreSQL para persistência (produção)
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres-n8n-pharma
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-n8n}
+      - POSTGRES_USER=${POSTGRES_USER:-n8n}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-pharma2025pg}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    profiles:
+      - production
+
+volumes:
+  n8n_data:
+    driver: local
+  redis_data:
+    driver: local
+    profiles:
+      - production
+  postgres_data:
+    driver: local
+    profiles:
+      - production
+
+networks:
+  default:
+    name: pharma-ai-n8n 

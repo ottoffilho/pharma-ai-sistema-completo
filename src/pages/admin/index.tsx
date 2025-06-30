@@ -20,7 +20,6 @@ import {
   Sparkles, 
   Lightbulb, 
   BarChart,
-  Users,
   Activity,
   Clock,
   CheckCircle,
@@ -38,7 +37,6 @@ import {
   Rocket,
   Crown,
   Gem,
-  Flame,
   Heart,
   Eye,
   Settings,
@@ -50,7 +48,6 @@ import {
   Wifi,
   Database,
   Server,
-  Monitor,
   Smartphone,
   Tablet,
   Headphones,
@@ -81,7 +78,7 @@ import {
   ChevronsUp,
   ChevronsDown,
   Home,
-  Building,
+
   Store,
   Package,
   Truck,
@@ -138,37 +135,61 @@ const AdminDashboard: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Query para fornecedores ativos
-  const { data: fornecedoresAtivos, isLoading: fornecedoresLoading } = useQuery({
-    queryKey: ['fornecedoresAtivos'],
+  // Query para vendas hoje
+  const { data: vendasHoje, isLoading: vendasLoading } = useQuery({
+    queryKey: ['vendasHoje'],
     queryFn: async () => {
-      const { count, error } = await supabase
-        .from('fornecedores')
-        .select('*', { count: 'exact', head: true });
-      
-      if (error) throw new Error(error.message);
-      return count || 0;
+      try {
+        const hoje = new Date().toISOString().split('T')[0];
+        
+        const { data, error } = await supabase
+          .from('vendas')
+          .select('total')
+          .gte('data_venda', hoje + 'T00:00:00')
+          .lte('data_venda', hoje + 'T23:59:59');
+        
+        if (error) {
+          console.warn('Tabela vendas não encontrada ou erro na query:', error);
+          return { totalVendas: 0, faturamento: 0 };
+        }
+        
+        const vendas = (data as any[]) || [];
+        const totalVendas = vendas.length;
+        const faturamento = vendas.reduce((sum, venda) => sum + (venda.total || 0), 0);
+        
+        return { totalVendas, faturamento };
+      } catch (error) {
+        console.warn('Erro na query de vendas:', error);
+        return { totalVendas: 0, faturamento: 0 };
+      }
     }
   });
 
-  // Query para produtos em estoque
-  const { data: produtosEstoque, isLoading: produtosLoading } = useQuery({
-    queryKey: ['produtosEstoque'],
+  // Query para ordens em produção
+  const { data: ordensProducao, isLoading: ordensLoading } = useQuery({
+    queryKey: ['ordensProducao'],
     queryFn: async () => {
-      // @ts-ignore — tabela "produtos" ainda não está presente nos tipos gerados.
-      const { data, error } = await (supabase as any)
-        .from('produtos')
-        .select('estoque_atual, estoque_minimo, ativo')
-        .eq('ativo', true);
-      
-      if (error) throw new Error(error.message);
-      
-      const produtosData = (data as any[]) || [];
-      const total = produtosData.length;
-      const baixoEstoque = produtosData.filter(p => p.estoque_atual <= p.estoque_minimo).length;
-      const semEstoque = produtosData.filter(p => p.estoque_atual === 0).length;
-      
-      return { total, baixoEstoque, semEstoque };
+      try {
+        const { data, error } = await supabase
+          .from('ordens_producao')
+          .select('id, status')
+          .in('status', ['em_andamento', 'aguardando_materiais', 'em_analise']);
+        
+        if (error) {
+          console.warn('Tabela ordens_producao não encontrada:', error);
+          return { total: 0, emAndamento: 0, aguardandoMateriais: 0 };
+        }
+        
+        const ordens = (data as any[]) || [];
+        const total = ordens.length;
+        const emAndamento = ordens.filter(o => o.status === 'em_andamento').length;
+        const aguardandoMateriais = ordens.filter(o => o.status === 'aguardando_materiais').length;
+        
+        return { total, emAndamento, aguardandoMateriais };
+      } catch (error) {
+        console.warn('Erro na query de ordens de produção:', error);
+        return { total: 0, emAndamento: 0, aguardandoMateriais: 0 };
+      }
     }
   });
 
@@ -176,15 +197,24 @@ const AdminDashboard: React.FC = () => {
   const { data: pedidosPendentes, isLoading: pedidosLoading } = useQuery({
     queryKey: ['pedidosPendentes'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('pedidos')
-        .select('id, status, created_at')
-        .in('status', ['pendente', 'aguardando_aprovacao', 'em_producao'])
-        .order('created_at', { ascending: false })
-        .limit(5);
-      
-      if (error) throw new Error(error.message);
-      return data || [];
+      try {
+        const { data, error } = await supabase
+          .from('pedidos')
+          .select('id, status, created_at')
+          .in('status', ['pendente', 'aguardando_aprovacao', 'em_producao'])
+          .order('created_at', { ascending: false })
+          .limit(5);
+        
+        if (error) {
+          console.warn('Tabela pedidos não encontrada:', error);
+          return [];
+        }
+        
+        return data || [];
+      } catch (error) {
+        console.warn('Erro na query de pedidos:', error);
+        return [];
+      }
     }
   });
 
@@ -192,29 +222,24 @@ const AdminDashboard: React.FC = () => {
   const { data: receitasHoje, isLoading: receitasLoading } = useQuery({
     queryKey: ['receitasHoje'],
     queryFn: async () => {
-      const hoje = new Date().toISOString().split('T')[0];
-      const { count, error } = await supabase
-        .from('receitas_processadas')
-        .select('*', { count: 'exact', head: true })
-        .gte('processed_at', hoje + 'T00:00:00')
-        .lte('processed_at', hoje + 'T23:59:59');
-      
-      if (error) throw new Error(error.message);
-      return count || 0;
-    }
-  });
-
-  // Query para usuários ativos
-  const { data: usuariosAtivos, isLoading: usuariosLoading } = useQuery({
-    queryKey: ['usuariosAtivos'],
-    queryFn: async () => {
-      const { count, error } = await supabase
-        .from('usuarios')
-        .select('*', { count: 'exact', head: true })
-        .eq('ativo', true);
-      
-      if (error) throw new Error(error.message);
-      return count || 0;
+      try {
+        const hoje = new Date().toISOString().split('T')[0];
+        const { count, error } = await supabase
+          .from('receitas_processadas')
+          .select('*', { count: 'exact', head: true })
+          .gte('processed_at', hoje + 'T00:00:00')
+          .lte('processed_at', hoje + 'T23:59:59');
+        
+        if (error) {
+          console.warn('Tabela receitas_processadas não encontrada:', error);
+          return 0;
+        }
+        
+        return count || 0;
+      } catch (error) {
+        console.warn('Erro na query de receitas:', error);
+        return 0;
+      }
     }
   });
 
@@ -224,26 +249,7 @@ const AdminDashboard: React.FC = () => {
     queryFn: async () => {
       const alertasList = [];
       
-      if (produtosEstoque?.semEstoque && produtosEstoque.semEstoque > 0) {
-        alertasList.push({
-          tipo: 'critico',
-          titulo: 'Produtos sem estoque',
-          descricao: `${produtosEstoque.semEstoque} produto(s) sem estoque`,
-          icone: AlertTriangle,
-          cor: 'red'
-        });
-      }
-      
-      if (produtosEstoque?.baixoEstoque && produtosEstoque.baixoEstoque > 0) {
-        alertasList.push({
-          tipo: 'aviso',
-          titulo: 'Estoque baixo',
-          descricao: `${produtosEstoque.baixoEstoque} produto(s) com estoque baixo`,
-          icone: AlertCircle,
-          cor: 'yellow'
-        });
-      }
-      
+      // Alerta de pedidos pendentes
       if (pedidosPendentes && pedidosPendentes.length > 0) {
         alertasList.push({
           tipo: 'info',
@@ -253,14 +259,25 @@ const AdminDashboard: React.FC = () => {
           cor: 'blue'
         });
       }
+
+      // Alerta de ordens aguardando materiais
+      if (ordensProducao && ordensProducao.aguardandoMateriais > 0) {
+        alertasList.push({
+          tipo: 'aviso',
+          titulo: 'Ordens aguardando materiais',
+          descricao: `${ordensProducao.aguardandoMateriais} ordem(ns) aguardando materiais`,
+          icone: AlertTriangle,
+          cor: 'yellow'
+        });
+      }
       
       return alertasList;
     },
-    enabled: !!produtosEstoque && !!pedidosPendentes
+    enabled: !!pedidosPendentes || !!ordensProducao
   });
 
   // Calculate if any queries are loading
-  const isLoading = fornecedoresLoading || produtosLoading || pedidosLoading || receitasLoading || usuariosLoading;
+  const isLoading = vendasLoading || ordensLoading || pedidosLoading || receitasLoading;
 
   // Helper function to format numbers
   const formatNumber = (num: number): string => {
@@ -299,55 +316,55 @@ const AdminDashboard: React.FC = () => {
     });
   };
 
-  // Métricas principais do dashboard
+  // Métricas principais do dashboard - Foco Produção/Atendimento
   const metricsData = [
     {
-      name: 'Usuários Ativos',
-      value: usuariosAtivos || 0,
-      displayValue: formatNumber(usuariosAtivos || 0),
+      name: 'Vendas Hoje',
+      value: vendasHoje?.faturamento || 0,
+      displayValue: vendasLoading ? '—' : formatCurrency(vendasHoje?.faturamento || 0),
       color: '#10b981',
       bgGradient: 'from-emerald-500 to-green-600',
-      icon: Users,
-      trend: '+12.5%',
+      icon: DollarSign,
+      trend: `${vendasHoje?.totalVendas || 0} vendas`,
       trendUp: true,
-      subtitle: 'Equipe ativa',
-      link: '/admin/usuarios'
+      subtitle: 'Faturamento diário',
+      link: '/admin/vendas'
     },
     {
-      name: 'Fornecedores Ativos',
-      value: fornecedoresAtivos || 0,
-      displayValue: formatNumber(fornecedoresAtivos || 0),
+      name: 'Ordens em Produção',
+      value: ordensProducao?.total || 0,
+      displayValue: ordensLoading ? '—' : formatNumber(ordensProducao?.total || 0),
       color: '#3b82f6',
       bgGradient: 'from-blue-500 to-indigo-600',
-      icon: Building,
-      trend: '+8.2%',
+      icon: FlaskConical,
+      trend: `${ordensProducao?.emAndamento || 0} em andamento`,
       trendUp: true,
-      subtitle: 'Parceiros comerciais',
-      link: '/admin/cadastros/fornecedores'
+      subtitle: 'Status da manipulação',
+      link: '/admin/producao'
     },
     {
-      name: 'Produtos Ativos',
-      value: produtosEstoque?.total || 0,
-      displayValue: formatNumber(produtosEstoque?.total || 0),
-      color: '#f59e0b',
-      bgGradient: 'from-amber-500 to-orange-600',
-      icon: Package,
-      trend: '+5.1%',
-      trendUp: true,
-      subtitle: 'Em estoque',
-      link: '/admin/estoque'
-    },
-    {
-      name: 'Receitas Hoje',
+      name: 'Receitas Processadas',
       value: receitasHoje || 0,
-      displayValue: formatNumber(receitasHoje || 0),
+      displayValue: receitasLoading ? '—' : formatNumber(receitasHoje || 0),
       color: '#8b5cf6',
       bgGradient: 'from-purple-500 to-violet-600',
       icon: FileText,
-      trend: '+15.3%',
+      trend: 'Atualizado hoje',
       trendUp: true,
       subtitle: 'Processadas pela IA',
       link: '/admin/ia/processamento-receitas'
+    },
+    {
+      name: 'Pedidos Pendentes',
+      value: pedidosPendentes?.length || 0,
+      displayValue: pedidosLoading ? '—' : formatNumber(pedidosPendentes?.length || 0),
+      color: '#ea580c',
+      bgGradient: 'from-orange-500 to-red-600',
+      icon: Clock,
+      trend: 'Requer atenção',
+      trendUp: false,
+      subtitle: 'Urgências operacionais',
+      link: '/admin/pedidos'
     }
   ];
 
@@ -534,7 +551,7 @@ const AdminDashboard: React.FC = () => {
             )}
 
             {/* Seção de IA e Insights Avançados */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="bg-gradient-to-br from-purple-500/10 via-indigo-500/10 to-blue-500/10 border-purple-200/50 hover:shadow-xl transition-all duration-300">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-2 mb-2">
@@ -632,57 +649,7 @@ const AdminDashboard: React.FC = () => {
                 </CardFooter>
               </Card>
 
-              <Card className="bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-red-500/10 border-amber-200/50 hover:shadow-xl transition-all duration-300">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg">
-                      <Flame className="h-5 w-5 text-white" />
-                    </div>
-                    <CardTitle className="text-lg bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
-                      Performance
-                    </CardTitle>
-                  </div>
-                  <CardDescription>
-                    Métricas de desempenho em tempo real
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-amber-600">99.9%</p>
-                        <p className="text-xs text-gray-600">Uptime</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-orange-600">1.2s</p>
-                        <p className="text-xs text-gray-600">Resposta</p>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>CPU</span>
-                        <span className="text-green-600">23%</span>
-                      </div>
-                      <Progress value={23} className="h-2" indicatorColor="bg-emerald-500" />
-                      
-                      <div className="flex justify-between text-sm">
-                        <span>Memória</span>
-                        <span className="text-blue-600">45%</span>
-                      </div>
-                      <Progress value={45} className="h-2" indicatorColor="bg-blue-500" />
-                    </div>
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Link to="/admin/sistema/monitoramento" className="w-full">
-                    <Button variant="outline" className="w-full border-amber-500 text-amber-600 hover:bg-amber-500 hover:text-white">
-                      <Monitor className="h-4 w-4 mr-2" />
-                      Monitoramento
-                    </Button>
-                  </Link>
-                </CardFooter>
-              </Card>
+
             </div>
 
             {/* Fim do conteúdo */}

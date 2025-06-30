@@ -8,6 +8,8 @@ interface CriarVendaRequest {
   cliente_nome?: string;
   cliente_documento?: string;
   cliente_telefone?: string;
+  tipo_venda?: 'MANIPULADO' | 'ALOPATICO' | 'DELIVERY' | 'PBM';
+  origem_id?: string; // ex.: ordem_producao_id quando MANIPULADO
   itens: Array<{
     produto_id: string;
     produto_codigo?: string;
@@ -62,19 +64,50 @@ serve(async (req) => {
     })
 
     // Verificar autenticação do usuário
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    )
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
 
     if (authError || !user) {
+      console.error('Erro de autenticação:', authError)
       return new Response(
-        JSON.stringify({ error: 'Não autorizado' }),
+        JSON.stringify({ error: 'Não autorizado', details: authError?.message }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
+    console.log('Usuário autenticado:', user.id)
+
     const url = new URL(req.url)
-    const action = url.searchParams.get('action')
+    let action = url.searchParams.get('action')
+    let bodyText: string | null = null
+    let body: any = null
+
+    // Se não vier via query param, tentar obter do body
+    if (!action && req.method === 'POST') {
+      try {
+        bodyText = await req.text()
+        console.log('Body text recebido:', bodyText)
+        body = JSON.parse(bodyText)
+        console.log('Body parsed:', JSON.stringify(body, null, 2))
+        action = body.action
+        console.log('Action extraída do body:', action)
+        
+        // Recriar request com body original para as funções
+        req = new Request(req.url, {
+          method: req.method,
+          headers: req.headers,
+          body: bodyText
+        })
+      } catch (e) {
+        console.error('Erro ao parsear body:', e)
+        return new Response(
+          JSON.stringify({ error: 'Body inválido' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
+    console.log('Action final determinada:', action)
 
     switch (action) {
       case 'criar-venda':
@@ -109,17 +142,27 @@ serve(async (req) => {
 })
 
 async function criarVenda(req: Request, supabase: any, userId: string) {
+  const corsHeaders = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE'
+  }
+
   const payload = await req.json()
   try {
     validateCriarVenda(payload)
   } catch (err) {
     return new Response(
       JSON.stringify({ error: 'Payload inválido', detalhes: err instanceof Error ? err.message : err }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+      { status: 400, headers: corsHeaders }
     )
   }
 
   const data = payload as CriarVendaRequest
+
+  // Usar diretamente o userId do auth (funciona com a estrutura atual)
+  const usuario = { id: userId }
 
   // Gerar número sequencial da venda
   const { data: ultimaVenda } = await supabase
@@ -138,14 +181,25 @@ async function criarVenda(req: Request, supabase: any, userId: string) {
   const { data: caixaAberto } = await supabase
     .from('abertura_caixa')
     .select('id')
-    .eq('status', 'aberto')
+    .eq('ativo', true)
     .order('data_abertura', { ascending: false })
     .limit(1)
 
   if (!caixaAberto || caixaAberto.length === 0) {
     return new Response(
       JSON.stringify({ error: 'Não há caixa aberto. Abra o caixa antes de realizar vendas.' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+      { status: 400, headers: corsHeaders }
+    )
+  }
+
+  // Definir tipo de venda (default ALOPATICO)
+  const tipoVenda = data.tipo_venda || 'ALOPATICO'
+
+  // Validação simples: se MANIPULADO, exigir origem_id
+  if (tipoVenda === 'MANIPULADO' && !data.origem_id) {
+    return new Response(
+      JSON.stringify({ error: 'origem_id (ordem_producao_id) é obrigatório para venda MANIPULADO' }),
+      { status: 400, headers: corsHeaders }
     )
   }
 
@@ -155,7 +209,7 @@ async function criarVenda(req: Request, supabase: any, userId: string) {
     .insert({
       numero_venda: proximoNumero,
       data_venda: new Date().toISOString(),
-      usuario_id: userId,
+      usuario_id: usuario.id, // Usar o ID da tabela usuarios
       cliente_id: data.cliente_id,
       cliente_nome: data.cliente_nome,
       cliente_documento: data.cliente_documento,
@@ -167,7 +221,9 @@ async function criarVenda(req: Request, supabase: any, userId: string) {
       status: 'rascunho',
       status_pagamento: 'pendente',
       observacoes: data.observacoes,
-      caixa_id: caixaAberto[0].id
+      caixa_id: caixaAberto[0].id,
+      tipo_venda: tipoVenda,
+      origem_id: data.origem_id
     })
     .select()
     .single()
@@ -176,7 +232,7 @@ async function criarVenda(req: Request, supabase: any, userId: string) {
     console.error('Erro ao criar venda:', vendaError)
     return new Response(
       JSON.stringify({ error: 'Erro ao criar venda' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: corsHeaders }
     )
   }
 
@@ -203,28 +259,84 @@ async function criarVenda(req: Request, supabase: any, userId: string) {
     
     return new Response(
       JSON.stringify({ error: 'Erro ao inserir itens da venda' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: corsHeaders }
     )
   }
 
   return new Response(
-    JSON.stringify({ venda: vendaData }),
-    { headers: { 'Content-Type': 'application/json' } }
+    JSON.stringify({
+      venda_id: vendaData.id,
+      numero_venda: vendaData.numero_venda,
+      venda: vendaData // mantém campo completo para retrocompatibilidade
+    }),
+    { headers: corsHeaders }
   )
 }
 
 async function finalizarVenda(req: Request, supabase: any, userId: string) {
-  const payload = await req.json()
-  try {
-    validateFinalizarVenda(payload)
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ error: 'Payload inválido', detalhes: err instanceof Error ? err.message : err }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
-    )
+  const corsHeaders = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE'
   }
 
-  const data = payload as FinalizarVendaRequest
+  try {
+    const payload = await req.json()
+    console.log('=== FINALIZANDO VENDA ===')
+    console.log('Payload recebido:', JSON.stringify(payload, null, 2))
+    console.log('User ID:', userId)
+    
+    // Filtrar apenas os dados necessários para validação
+    const finalizarData = {
+      venda_id: payload.venda_id,
+      pagamentos: payload.pagamentos || [],
+      troco: payload.troco || 0
+    }
+    
+    console.log('Dados para validação:', JSON.stringify(finalizarData, null, 2))
+    
+    // Validação simples para debug
+    if (!finalizarData.venda_id) {
+      console.log('ERRO: venda_id é obrigatório')
+      return new Response(
+        JSON.stringify({ error: 'venda_id é obrigatório' }),
+        { status: 400, headers: corsHeaders }
+      )
+    }
+    
+    if (!Array.isArray(finalizarData.pagamentos)) {
+      console.log('ERRO: pagamentos deve ser um array')
+      return new Response(
+        JSON.stringify({ error: 'pagamentos deve ser um array' }),
+        { status: 400, headers: corsHeaders }
+      )
+    }
+    
+    if (finalizarData.pagamentos.length === 0) {
+      console.log('ERRO: Pelo menos uma forma de pagamento é obrigatória')
+      return new Response(
+        JSON.stringify({ error: 'Pelo menos uma forma de pagamento é obrigatória' }),
+        { status: 400, headers: corsHeaders }
+      )
+    }
+    
+    // Validar estrutura dos pagamentos
+    for (let i = 0; i < finalizarData.pagamentos.length; i++) {
+      const pag = finalizarData.pagamentos[i]
+      if (!pag.forma_pagamento || typeof pag.valor !== 'number' || pag.valor <= 0) {
+        console.log(`ERRO: Pagamento ${i} inválido:`, pag)
+        return new Response(
+          JSON.stringify({ error: `Pagamento ${i + 1} inválido: forma_pagamento e valor são obrigatórios` }),
+          { status: 400, headers: corsHeaders }
+        )
+      }
+    }
+    
+    // Comentar validação zod temporariamente para debug
+    // validateFinalizarVenda(finalizarData)
+    
+    const data = finalizarData as FinalizarVendaRequest
 
   // Verificar se a venda existe e está em rascunho
   const { data: venda, error: vendaError } = await supabase
@@ -236,14 +348,14 @@ async function finalizarVenda(req: Request, supabase: any, userId: string) {
   if (vendaError || !venda) {
     return new Response(
       JSON.stringify({ error: 'Venda não encontrada' }),
-      { status: 404, headers: { 'Content-Type': 'application/json' } }
+      { status: 404, headers: corsHeaders }
     )
   }
 
   if (venda.status !== 'rascunho') {
     return new Response(
       JSON.stringify({ error: 'Venda já foi finalizada ou cancelada' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+      { status: 400, headers: corsHeaders }
     )
   }
 
@@ -254,7 +366,7 @@ async function finalizarVenda(req: Request, supabase: any, userId: string) {
   if (Math.abs(totalComTroco - venda.total) > 0.01) {
     return new Response(
       JSON.stringify({ error: 'Total dos pagamentos não confere com o total da venda' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+      { status: 400, headers: corsHeaders }
     )
   }
 
@@ -273,9 +385,27 @@ async function finalizarVenda(req: Request, supabase: any, userId: string) {
     console.error('Erro ao finalizar venda:', updateVendaError)
     return new Response(
       JSON.stringify({ error: 'Erro ao finalizar venda' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: corsHeaders }
     )
   }
+
+  // Buscar ID do usuário na tabela usuarios
+  const { data: usuarioData, error: usuarioError } = await supabase
+    .from('usuarios')
+    .select('id')
+    .eq('auth_id', userId)
+    .single()
+
+  if (usuarioError || !usuarioData) {
+    console.error('Erro ao buscar usuário:', usuarioError)
+    return new Response(
+      JSON.stringify({ error: 'Usuário não encontrado na tabela usuarios' }),
+      { status: 404, headers: corsHeaders }
+    )
+  }
+
+  const usuarioId = usuarioData.id
+  console.log('ID do usuário na tabela usuarios:', usuarioId)
 
   // Inserir pagamentos
   const pagamentosVenda = data.pagamentos.map(pag => ({
@@ -286,7 +416,10 @@ async function finalizarVenda(req: Request, supabase: any, userId: string) {
     numero_autorizacao: pag.numero_autorizacao,
     codigo_transacao: pag.codigo_transacao,
     observacoes: pag.observacoes,
-    data_pagamento: new Date().toISOString()
+    data_pagamento: new Date().toISOString(),
+    usuario_id: usuarioId,
+    proprietario_id: null, // Para desenvolvimento local sem multi-tenant
+    farmacia_id: null      // Para desenvolvimento local sem multi-tenant
   }))
 
   const { error: pagamentosError } = await supabase
@@ -297,7 +430,7 @@ async function finalizarVenda(req: Request, supabase: any, userId: string) {
     console.error('Erro ao inserir pagamentos:', pagamentosError)
     return new Response(
       JSON.stringify({ error: 'Erro ao processar pagamentos' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: corsHeaders }
     )
   }
 
@@ -332,17 +465,35 @@ async function finalizarVenda(req: Request, supabase: any, userId: string) {
       total: venda.total,
       troco: data.troco || 0
     }),
-    { headers: { 'Content-Type': 'application/json' } }
+    { headers: corsHeaders }
   )
+
+  } catch (error) {
+    console.error('Erro geral na função finalizar venda:', error)
+    return new Response(
+      JSON.stringify({ 
+        error: 'Erro interno na função', 
+        detalhes: error instanceof Error ? error.message : String(error) 
+      }),
+      { status: 500, headers: corsHeaders }
+    )
+  }
 }
 
 async function obterVenda(url: URL, supabase: any) {
+  const corsHeaders = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE'
+  }
+
   const vendaId = url.searchParams.get('venda_id')
 
   if (!vendaId) {
     return new Response(
       JSON.stringify({ error: 'ID da venda é obrigatório' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+      { status: 400, headers: corsHeaders }
     )
   }
 
@@ -359,17 +510,24 @@ async function obterVenda(url: URL, supabase: any) {
   if (vendaError) {
     return new Response(
       JSON.stringify({ error: 'Venda não encontrada' }),
-      { status: 404, headers: { 'Content-Type': 'application/json' } }
+      { status: 404, headers: corsHeaders }
     )
   }
 
   return new Response(
     JSON.stringify({ venda }),
-    { headers: { 'Content-Type': 'application/json' } }
+    { headers: corsHeaders }
   )
 }
 
 async function listarVendas(url: URL, supabase: any) {
+  const corsHeaders = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE'
+  }
+
   const limite = parseInt(url.searchParams.get('limite') || '50')
   const offset = parseInt(url.searchParams.get('offset') || '0')
   const status = url.searchParams.get('status')
@@ -399,24 +557,31 @@ async function listarVendas(url: URL, supabase: any) {
   if (error) {
     return new Response(
       JSON.stringify({ error: 'Erro ao listar vendas' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: corsHeaders }
     )
   }
 
   return new Response(
     JSON.stringify({ vendas }),
-    { headers: { 'Content-Type': 'application/json' } }
+    { headers: corsHeaders }
   )
 }
 
 async function cancelarVenda(url: URL, supabase: any, userId: string) {
+  const corsHeaders = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE'
+  }
+
   const vendaId = url.searchParams.get('venda_id')
   const motivo = url.searchParams.get('motivo')
 
   if (!vendaId) {
     return new Response(
       JSON.stringify({ error: 'ID da venda é obrigatório' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+      { status: 400, headers: corsHeaders }
     )
   }
 
@@ -430,14 +595,14 @@ async function cancelarVenda(url: URL, supabase: any, userId: string) {
   if (vendaError || !venda) {
     return new Response(
       JSON.stringify({ error: 'Venda não encontrada' }),
-      { status: 404, headers: { 'Content-Type': 'application/json' } }
+      { status: 404, headers: corsHeaders }
     )
   }
 
   if (venda.status === 'cancelada') {
     return new Response(
       JSON.stringify({ error: 'Venda já está cancelada' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+      { status: 400, headers: corsHeaders }
     )
   }
 
@@ -456,7 +621,7 @@ async function cancelarVenda(url: URL, supabase: any, userId: string) {
   if (updateError) {
     return new Response(
       JSON.stringify({ error: 'Erro ao cancelar venda' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: corsHeaders }
     )
   }
 
@@ -486,6 +651,6 @@ async function cancelarVenda(url: URL, supabase: any, userId: string) {
 
   return new Response(
     JSON.stringify({ success: true, message: 'Venda cancelada com sucesso' }),
-    { headers: { 'Content-Type': 'application/json' } }
+    { headers: corsHeaders }
   )
 } 

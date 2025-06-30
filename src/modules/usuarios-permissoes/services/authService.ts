@@ -43,6 +43,20 @@ export class AuthService {
         };
       }
 
+      // Garantir que o usuário esteja sincronizado na tabela `usuarios`
+      try {
+        if (authData.session?.access_token) {
+          await supabase.functions.invoke('verificar-sincronizar-usuario', {
+            headers: {
+              Authorization: `Bearer ${authData.session.access_token}`
+            },
+            body: {}
+          });
+        }
+      } catch (syncError) {
+        console.error('Erro ao sincronizar usuário:', syncError);
+      }
+
       // Buscar dados completos do usuário
       const usuario = await this.obterUsuarioCompleto(authData.user.id);
       

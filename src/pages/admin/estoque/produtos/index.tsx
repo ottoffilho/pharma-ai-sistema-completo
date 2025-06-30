@@ -107,7 +107,6 @@ interface Produto {
 
 const ProdutosPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -185,10 +184,7 @@ const ProdutosPage: React.FC = () => {
   // Filtrar produtos baseado na busca, filtros e aba ativa
   const filteredProdutos = produtos?.filter((produto: Produto) => {
     const matchesSearch = produto.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         produto.tipo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          produto.categoria?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesType = filterType === 'all' || produto.tipo === filterType;
     
     const matchesStatus = filterStatus === 'all' || 
                          (filterStatus === 'low_stock' && produto.estoque_atual <= produto.estoque_minimo) ||
@@ -196,22 +192,18 @@ const ProdutosPage: React.FC = () => {
     
     const matchesCategory = filterCategory === 'all' || produto.categoria === filterCategory;
     
-    // Filtro por aba - usando as 4 novas categorias
-    const matchesTab = currentTab === 'all' || 
-                      (currentTab === 'alopaticos' && ['INSUMO', 'MATERIA_PRIMA', 'PRINCIPIO_ATIVO', 'EXCIPIENTE', 'COSMÉTICO'].includes(produto.tipo)) ||
-                      (currentTab === 'embalagens' && produto.tipo === 'EMBALAGEM') ||
-                      (currentTab === 'homeopaticos' && produto.tipo === 'HOMEOPATICO') ||
-                      (currentTab === 'revenda' && produto.tipo === 'MEDICAMENTO');
+    // Filtro por aba - usando as 4 categorias simplificadas
+    const matchesTab = currentTab === 'all' || produto.categoria === currentTab;
     
-    return matchesSearch && matchesType && matchesStatus && matchesCategory && matchesTab;
+    return matchesSearch && matchesStatus && matchesCategory && matchesTab;
   }) || [];
 
-  // Calcular métricas - usando as 4 novas categorias
+  // Calcular métricas - usando as 4 categorias simplificadas
   const totalProdutos = produtos?.length || 0;
-  const totalAlopaticos = produtos?.filter((p: Produto) => ['INSUMO', 'MATERIA_PRIMA', 'PRINCIPIO_ATIVO', 'EXCIPIENTE', 'COSMÉTICO'].includes(p.tipo)).length || 0;
-  const totalEmbalagens = produtos?.filter((p: Produto) => p.tipo === 'EMBALAGEM').length || 0;
-  const totalHomeopaticos = produtos?.filter((p: Produto) => p.tipo === 'HOMEOPATICO').length || 0;
-  const totalRevenda = produtos?.filter((p: Produto) => p.tipo === 'MEDICAMENTO').length || 0;
+  const totalAlopaticos = produtos?.filter((p: Produto) => p.categoria === 'alopaticos').length || 0;
+  const totalEmbalagens = produtos?.filter((p: Produto) => p.categoria === 'embalagens').length || 0;
+  const totalHomeopaticos = produtos?.filter((p: Produto) => p.categoria === 'homeopaticos').length || 0;
+  const totalRevenda = produtos?.filter((p: Produto) => p.categoria === 'revenda').length || 0;
   const lowStockCount = produtos?.filter((p: Produto) => p.estoque_atual <= p.estoque_minimo).length || 0;
   const totalValue = produtos?.reduce((sum: number, p: Produto) => {
     // Usar custo efetivo (custo + frete) da nota fiscal, ou custo unitário como fallback
@@ -478,16 +470,16 @@ const ProdutosPage: React.FC = () => {
                     />
                   </div>
                   
-                  <Select value={filterType} onValueChange={setFilterType}>
+                  <Select value={filterCategory} onValueChange={setFilterCategory}>
                     <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Tipo" />
+                      <SelectValue placeholder="Categoria" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Todos os tipos</SelectItem>
-                      <SelectItem value="MEDICAMENTO">Medicamento</SelectItem>
-                      <SelectItem value="COSMÉTICO">Cosmético</SelectItem>
-                      <SelectItem value="INSUMO">Insumo</SelectItem>
-                      <SelectItem value="EMBALAGEM">Embalagem</SelectItem>
+                      <SelectItem value="all">Todas categorias</SelectItem>
+                      <SelectItem value="alopaticos">Alopáticos</SelectItem>
+                      <SelectItem value="embalagens">Embalagens</SelectItem>
+                      <SelectItem value="homeopaticos">Homeopáticos</SelectItem>
+                      <SelectItem value="revenda">Revenda</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -578,7 +570,7 @@ const ProdutosPage: React.FC = () => {
                       <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                       <h3 className="text-lg font-semibold mb-2">Nenhum produto encontrado</h3>
                       <p className="text-muted-foreground mb-4">
-                        {searchTerm || filterType !== 'all' || filterStatus !== 'all' 
+                        {searchTerm || filterStatus !== 'all' || filterCategory !== 'all'
                           ? 'Tente ajustar os filtros de busca'
                           : 'Comece criando seu primeiro produto'
                         }
@@ -594,7 +586,6 @@ const ProdutosPage: React.FC = () => {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Produto</TableHead>
-                            <TableHead>Tipo</TableHead>
                             <TableHead>Categoria</TableHead>
                             <TableHead>Total Unidades</TableHead>
                             <TableHead>Valor Compra NF</TableHead>
@@ -619,15 +610,6 @@ const ProdutosPage: React.FC = () => {
                                       </span>
                                     )}
                                   </div>
-                                </TableCell>
-                                <TableCell>
-                                  <Badge 
-                                    variant="outline" 
-                                    className={cn("flex items-center gap-1 w-fit", getTypeColor(produto.tipo))}
-                                  >
-                                    {getTypeIcon(produto.tipo)}
-                                    {produto.tipo}
-                                  </Badge>
                                 </TableCell>
                                 <TableCell>
                                   <Badge 

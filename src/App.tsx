@@ -33,6 +33,9 @@ import FornecedoresPage from "./pages/admin/cadastros/fornecedores/index";
 import NovoFornecedorPage from "./pages/admin/cadastros/fornecedores/novo";
 import EditarFornecedorPage from "./pages/admin/cadastros/fornecedores/[id]";
 import VisualizarFornecedorPage from "./pages/admin/cadastros/fornecedores/visualizar";
+import ListaFormasFarmaceuticas from "./pages/admin/cadastros/formas-farmaceuticas/index";
+import NovaFormaFarmaceutica from "./pages/admin/cadastros/formas-farmaceuticas/nova";
+import EditarFormaFarmaceutica from "./pages/admin/cadastros/formas-farmaceuticas/[id]/editar";
 import CategoriasFinanceirasPage from "./pages/admin/financeiro/categorias/index";
 import NovaCategoriaPage from "./pages/admin/financeiro/categorias/novo";
 import EditarCategoriaPage from "./pages/admin/financeiro/categorias/editar";
@@ -85,12 +88,12 @@ import NovoProdutoPage from "./pages/admin/estoque/produtos/novo";
 import EditarProdutoPage from "./pages/admin/estoque/produtos/editar";
 import DetalhesProdutoPage from "./pages/admin/estoque/produtos/detalhes";
 
-// Importações do sistema de vendas
-import PDVPage from "./pages/admin/vendas/pdv";
-import VendasOverview from "./pages/admin/vendas/index";
-import HistoricoVendas from './pages/admin/vendas/historico';
-import ControleCaixa from './pages/admin/vendas/caixa';
-import FechamentoVendas from './pages/admin/vendas/fechamento';
+// Sistema de Vendas
+import VendasPage from "./pages/admin/vendas";
+import PDVUnificado from "./pages/admin/vendas/pdv"; // PDV unificado e inteligente
+import CaixaPage from "./pages/admin/vendas/caixa";
+import FechamentoVendasPage from "./pages/admin/vendas/fechamento";
+import HistoricoVendasPage from "./pages/admin/vendas/historico";
 
 // Importações do sistema de clientes
 import GestaoClientes from "./pages/admin/clientes/index";
@@ -242,7 +245,12 @@ const App = (): JSX.Element => {
       <ErrorBoundary>
         <AuthSimpleProvider>
           <QueryClientProvider client={queryClient}>
-            <BrowserRouter>
+            <BrowserRouter
+              future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true
+              }}
+            >
               <ChatbotProvider>
                 <Toaster />
                 <Sonner />
@@ -366,12 +374,15 @@ const App = (): JSX.Element => {
                             <Route path="cadastros/fornecedores/novo" element={<NovoFornecedorPage />} />
                             <Route path="cadastros/fornecedores/:id" element={<VisualizarFornecedorPage />} />
                             <Route path="cadastros/fornecedores/editar/:id" element={<EditarFornecedorPage />} />
+                            <Route path="cadastros/formas-farmaceuticas" element={<ListaFormasFarmaceuticas />} />
+                            <Route path="cadastros/formas-farmaceuticas/nova" element={<NovaFormaFarmaceutica />} />
+                            <Route path="cadastros/formas-farmaceuticas/:id/editar" element={<EditarFormaFarmaceutica />} />
                             <Route path="producao" element={<OrdensProducaoPage />} />
                             <Route path="producao/nova" element={<NovaOrdemProducaoPage />} />
                             <Route path="producao/relatorios" element={<RelatoriosProducaoPage />} />
                             <Route path="producao/:id" element={<DetalhesOrdemProducaoPage />} />
                             <Route path="producao/:id/editar" element={<EditarOrdemProducaoPage />} />
-                            <Route path="producao/:id/controle-qualidade" element={<ControleQualidadePage />} />
+                            <Route path="producao/controle-qualidade" element={<ControleQualidadePage />} />
                             <Route path="ia/chatbot" element={<ChatbotPage />} />
                             <Route path="ia/processamento-receitas" element={<ProcessamentoReceitasPage />} />
                             <Route path="ia/previsao-demanda" element={<PrevisaoDemandaPage />} />
@@ -409,11 +420,11 @@ const App = (): JSX.Element => {
                             <Route path="estoque/produtos/:id" element={<DetalhesProdutoPage />} />
                             
                             {/* Rotas do Sistema de Vendas */}
-                            <Route path="vendas" element={<VendasOverview />} />
-                            <Route path="vendas/pdv" element={<PDVPage />} />
-                            <Route path="vendas/historico" element={<HistoricoVendas />} />
-                            <Route path="vendas/caixa" element={<ControleCaixa />} />
-                            <Route path="vendas/fechamento" element={<FechamentoVendas />} />
+                            <Route path="vendas" element={<VendasPage />} />
+                            <Route path="vendas/pdv" element={<PDVUnificado />} />
+                            <Route path="vendas/caixa" element={<CaixaPage />} />
+                            <Route path="vendas/fechamento" element={<FechamentoVendasPage />} />
+                            <Route path="vendas/historico" element={<HistoricoVendasPage />} />
                             
                             {/* Rotas de Embalagens */}
                             <Route path="estoque/embalagens" element={<EmbalagensListPage />} />

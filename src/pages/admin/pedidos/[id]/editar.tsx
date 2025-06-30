@@ -436,7 +436,11 @@ const EditarReceitaPage: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Valores & Entrega</CardTitle>
-              <CardDescription>Dados financeiros e logísticos do pedido (se existir)</CardDescription>
+              <CardDescription>
+                Dados financeiros e logísticos do pedido. Se preferir que o sistema calcule o valor
+                automaticamente, deixe o campo em branco e clique no botão <strong>"Gerar Orçamento"</strong>
+                na tela de detalhes; caso já possua o valor final aprovado, preencha manualmente abaixo.
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid md:grid-cols-2 gap-4">
               <div>

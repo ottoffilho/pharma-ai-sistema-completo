@@ -62,6 +62,21 @@ export const useAuthState = () => {
       console.log('🔄 useAuth - Iniciando carregamento do usuário...');
       setCarregando(true);
       
+      // Passo 1: garantir que o usuário autenticado esteja sincronizado na tabela `usuarios`
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session?.access_token) {
+          await supabase.functions.invoke('verificar-sincronizar-usuario', {
+            headers: {
+              Authorization: `Bearer ${sessionData.session.access_token}`
+            },
+            body: {}
+          });
+        }
+      } catch (syncError) {
+        console.error('❌ useAuth - Erro ao sincronizar usuário:', syncError);
+      }
+      
       const usuarioAtual = await AuthService.obterUsuarioAtual();
       console.log('👤 useAuth - Usuário obtido:', usuarioAtual ? 'Encontrado' : 'Não encontrado');
       

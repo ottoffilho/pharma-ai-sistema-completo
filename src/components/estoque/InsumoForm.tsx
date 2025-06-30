@@ -78,6 +78,14 @@ const insumoSchema = z.object({
     .optional()
     .nullable()
     .transform((val) => (val ? parseFloat(val.replace(",", ".")) : null)),
+  densidade: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((val) => (val ? parseFloat(val.replace(",", ".")) : null))
+    .refine((val) => !val || (val > 0 && val < 10), {
+      message: "Densidade deve estar entre 0 e 10 g/ml"
+    }),
 });
 
 type InsumoFormValues = z.infer<typeof insumoSchema>;
@@ -125,6 +133,7 @@ export default function InsumoForm({
       estoque_atual: initialData?.estoque_atual?.toString() || "0",
       estoque_minimo: initialData?.estoque_minimo?.toString() || "0",
       estoque_maximo: initialData?.estoque_maximo?.toString() || "",
+      densidade: initialData?.densidade?.toString() || "",
     },
   });
 
@@ -151,6 +160,7 @@ export default function InsumoForm({
         estoque_atual: values.estoque_atual || 0,
         estoque_minimo: values.estoque_minimo || 0,
         estoque_maximo: values.estoque_maximo,
+        densidade: values.densidade || null,
       };
 
       if (isEditing && insumoId) {
@@ -427,6 +437,31 @@ export default function InsumoForm({
                   <FormControl>
                     <Input
                       placeholder="0.00 (opcional)"
+                      {...field}
+                      value={field.value || ""}
+                      type="text"
+                      inputMode="decimal"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="densidade"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Densidade (g/ml)
+                    <span className="text-sm font-normal text-muted-foreground ml-2">
+                      Importante para cálculo de volume
+                    </span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Ex: 1.00 (opcional)"
                       {...field}
                       value={field.value || ""}
                       type="text"

@@ -178,7 +178,7 @@ export const DashboardOperacional: React.FC<DashboardProps> = ({ usuario, permis
 
                 {/* Controle de Qualidade */}
                 <a
-                  href="/admin/producao/controle-qualidade"
+                  href="/admin/producao"
                   className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center">

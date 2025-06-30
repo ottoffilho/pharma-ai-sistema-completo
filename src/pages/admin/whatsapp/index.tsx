@@ -57,6 +57,7 @@ import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { getWhatsAppConfig, getBusinessHours, validateEnvConfig, messageTemplates } from '@/config/env-config';
 
 interface Conversa {
   id: string;
@@ -116,6 +117,20 @@ const WhatsAppDashboard: React.FC = () => {
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [conversaSelecionada, setConversaSelecionada] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
+
+  // Configurações obtidas do env-config centralizado
+  const whatsappConfig = getWhatsAppConfig();
+  const businessHours = getBusinessHours();
+
+  // Validar configurações do WhatsApp
+  const configValidation = validateEnvConfig();
+  
+  // Mostrar aviso se configurações estão faltando
+  React.useEffect(() => {
+    if (!configValidation.isValid) {
+      console.warn('Configurações do WhatsApp incompletas:', configValidation.missingVars);
+    }
+  }, [configValidation]);
 
   // Buscar mensagens da conversa selecionada
   const { data: mensagensData } = useQuery({
@@ -1115,7 +1130,7 @@ const WhatsAppDashboard: React.FC = () => {
                       <div>
                         <label className="text-sm font-medium">URL do Webhook</label>
                         <Input 
-                          value="https://hjwebmpvaaeogbfqxwub.supabase.co/functions/v1/whatsapp-webhook"
+                          value={whatsappConfig.webhookFullUrl}
                           readOnly
                           className="mt-1"
                         />
@@ -1123,7 +1138,7 @@ const WhatsAppDashboard: React.FC = () => {
                       <div>
                         <label className="text-sm font-medium">Token de Verificação</label>
                         <Input 
-                          value="pharma_ai_webhook_token_2024"
+                          value={whatsappConfig.webhookToken}
                           readOnly
                           className="mt-1"
                         />
@@ -1138,11 +1153,11 @@ const WhatsAppDashboard: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-sm font-medium">Horário de Início</label>
-                        <Input type="time" defaultValue="08:00" className="mt-1" />
+                        <Input type="time" defaultValue={businessHours.start} className="mt-1" />
                       </div>
                       <div>
                         <label className="text-sm font-medium">Horário de Término</label>
-                        <Input type="time" defaultValue="18:00" className="mt-1" />
+                        <Input type="time" defaultValue={businessHours.end} className="mt-1" />
                       </div>
                     </div>
                   </div>

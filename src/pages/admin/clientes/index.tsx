@@ -234,7 +234,7 @@ const GestaoClientes: React.FC = () => {
                     </div>
                     <div>
                       <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                        Gestão de Clientes
+                        Central de Clientes
                       </h1>
                       <p className="text-xl text-muted-foreground mt-2">
                         Gerencie todos os clientes da farmácia
