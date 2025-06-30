@@ -40,16 +40,19 @@ import AdminLayout from '@/components/layouts/AdminLayout';
 
 // Definindo interface para lote
 interface LoteExtended {
+  id: string;
   numero_lote: string;
   data_validade: string | null;
-  produto?: {
+  quantidade_atual: number;
+  quantidade_inicial: number;
+  produtos?: {
     nome: string;
+    codigo_interno?: string;
+    unidade_medida?: string;
+    fornecedores?: {
+      nome: string;
+    }
   };
-  fornecedor?: {
-    nome: string;
-  };
-  quantidade: number;
-  id: string;
   [key: string]: unknown;
 }
 
@@ -150,7 +153,7 @@ const LotesPage: React.FC = () => {
   // Filtrar lotes baseado na busca
   const filteredLotes = lotes?.filter((lote: LoteExtended) => {
     const matchesSearch = lote.numero_lote?.toLowerCase().includes(busca.toLowerCase()) ||
-                         lote.produto?.nome?.toLowerCase().includes(busca.toLowerCase());
+                         lote.produtos?.nome?.toLowerCase().includes(busca.toLowerCase());
     
     const matchesStatus = filterStatus === 'all' || 
                          (filterStatus === 'valid' && lote.data_validade && new Date(lote.data_validade) > new Date()) ||
@@ -415,17 +418,17 @@ const LotesPage: React.FC = () => {
                               <TableCell>
                                 <div className="flex flex-col">
                                   <span className="font-medium">
-                                    {(lote as LoteExtended & { produtos?: { nome: string; codigo_interno?: string } }).produtos?.nome || 'Produto não encontrado'}
+                                    {(lote as LoteExtended).produtos?.nome || 'Produto não encontrado'}
                                   </span>
                                   <span className="text-sm text-muted-foreground">
-                                    {(lote as LoteExtended & { produtos?: { nome: string; codigo_interno?: string } }).produtos?.codigo_interno}
+                                    {(lote as LoteExtended).produtos?.codigo_interno}
                                   </span>
                                 </div>
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
                                   <Building2 className="h-4 w-4 text-muted-foreground" />
-                                  {(lote as LoteExtended & { fornecedor?: { nome: string } }).fornecedor?.nome || 'Não informado'}
+                                  {lote.produtos?.fornecedores?.nome || 'Não informado'}
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -439,7 +442,7 @@ const LotesPage: React.FC = () => {
                                         })}
                                       </span>
                                       <span className="text-sm font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                                        {(lote as LoteExtended & { produtos?: { unidade_medida?: string } }).produtos?.unidade_medida || 'UN'}
+                                        {(lote as LoteExtended).produtos?.unidade_medida || 'UN'}
                                       </span>
                                     </div>
                                     {/* Indicador simples de status */}

@@ -689,6 +689,87 @@ const extrairDadosItem = (det: Element, numeroItem: number): Record<string, unkn
     };
   }
 
+  const normalizarUnidadeEQuantidade = (
+    uCom: string,
+    qCom: number,
+    nomeProduto: string,
+  ): { unidade: string; quantidade: number } => {
+    const uComUpper = (uCom || '').toUpperCase();
+    let unidadeBase = uComUpper;
+    let quantidadeCalculada = qCom;
+    let fatorConversao = 1;
+  
+    // 1. Extrair valor numérico e unidade da string 'uCom' (ex: "1 KG" ou "5,385K")
+    const matchUnidadeComposta = uComUpper.match(/^([\d.,]+)\s*([A-ZÀ-Ü]+)/);
+    if (matchUnidadeComposta) {
+      const valorNumericoStr = matchUnidadeComposta[1].replace(',', '.');
+      const valorNumerico = parseFloat(valorNumericoStr);
+      const unidadeExtraida = matchUnidadeComposta[2];
+  
+      if (!isNaN(valorNumerico)) {
+        // Multiplica a quantidade do XML pelo valor encontrado na unidade
+        quantidadeCalculada *= valorNumerico; 
+        unidadeBase = unidadeExtraida;
+      }
+    }
+  
+    // 2. Normalizar a unidade base e definir o fator de conversão
+    let unidadeFinal = unidadeBase;
+    switch (unidadeBase) {
+      case 'KG':
+      case 'K':
+        unidadeFinal = 'G';
+        fatorConversao = 1000;
+        break;
+      case 'L':
+        unidadeFinal = 'ML';
+        fatorConversao = 1000;
+        break;
+      case 'G':
+        unidadeFinal = 'G';
+        break;
+      case 'ML':
+        unidadeFinal = 'ML';
+        break;
+      case 'MIL': // "5 MIL"
+        unidadeFinal = 'U';
+        fatorConversao = 1000;
+        break;
+      case 'UN':
+      case 'UND':
+      case 'UNID':
+      case 'UNIDADE':
+      case 'PC':
+        unidadeFinal = 'U';
+        // Se a unidade for genérica, tenta extrair a informação do nome do produto
+        const nomeMatch = nomeProduto.toUpperCase().match(/\((\d+)\s*(ML|G|MG|U)\)/);
+        if (nomeMatch) {
+          const valorNome = parseInt(nomeMatch[1], 10);
+          const unidadeNome = nomeMatch[2];
+          if (!isNaN(valorNome)) {
+            quantidadeCalculada = valorNome * qCom;
+            unidadeFinal = unidadeNome;
+            fatorConversao = 1; // Reseta o fator pois a quantidade já foi extraída
+          }
+        }
+        break;
+    }
+  
+    // 3. Aplicar o fator de conversão à quantidade calculada
+    const quantidadeFinal = quantidadeCalculada * fatorConversao;
+  
+    return { unidade: unidadeFinal.toLowerCase(), quantidade: quantidadeFinal };
+  };
+
+  // Normalizar unidade e quantidade
+  const { unidade: unidadeNormalizada, quantidade: quantidadeNormalizada } =
+    normalizarUnidadeEQuantidade(unidadeComercial, quantidadeComercial, nome);
+
+  const valorUnitarioNormalizado =
+    quantidadeNormalizada > 0
+      ? valorTotalProduto / quantidadeNormalizada
+      : valorUnitarioComercial;
+
   return {
     numeroItem,
     produto: {
@@ -697,14 +778,14 @@ const extrairDadosItem = (det: Element, numeroItem: number): Record<string, unkn
       nome,
       ncm,
       cfop,
-      unidadeComercial,
-      unidadeTributaria,
+      unidadeComercial: unidadeNormalizada,
+      unidadeTributaria: unidadeTributaria, // Manter original por enquanto
       lote
     },
-    quantidadeComercial,
-    valorUnitarioComercial,
-    quantidadeTributaria,
-    valorUnitarioTributario,
+    quantidadeComercial: quantidadeNormalizada,
+    valorUnitarioComercial: valorUnitarioNormalizado,
+    quantidadeTributaria: quantidadeTributaria, // Manter original
+    valorUnitarioTributario: valorUnitarioTributario, // Manter original
     valorTotalProduto,
     valorFrete,
     cfop,
@@ -913,7 +994,7 @@ const processarProdutosDoXML = async (itens: Record<string, unknown>[], forneced
             produto_id: produto.id,
             numero_lote: produtoData.lote.numeroLote,
             data_validade: produtoData.lote.dataValidade,
-            quantidade: produtoData.lote.quantidade || (item.quantidadeComercial as number),
+            quantidade: (item.quantidadeComercial as number), // Sempre usar valor normalizado
             preco_custo_unitario: item.valorUnitarioComercial as number,
             fornecedor_id: fornecedorId
           });
@@ -1041,7 +1122,7 @@ function classificarCategoriaProduto(ncm: string, nome: string): string {
     '39233090', // Potes plásticos, bisnagas, frascos de plástico
     '39234000', // Bobinas, carretéis e suportes similares
     '39269090', // Outras obras de plástico (aplicadores anais, etc.)
-    '39239090', // Outras obras de plásticos (colheres de medida, aplicadores)
+    '39239090', // Outros artigos de plásticos (colheres de medida, aplicadores)
     '39199090', // Outros artigos de plástico
     
     // Frascos e recipientes de vidro
@@ -1143,6 +1224,17 @@ function classificarCategoriaProduto(ncm: string, nome: string): string {
     return 'homeopaticos';
   }
 
+  // NOVA REGRA V8 (2025-06-26) - PRIORIDADE AJUSTADA
+  // NCMs de insumos estratégicos que devem ser Alopáticos e ter prioridade sobre a regra genérica de cosméticos.
+  const ncmInsumosEstrategicos = [
+    '21069030', // Suplementos (Ex: Omega 3)
+    '33012990', // Óleos essenciais (Ex: Melaleuca)
+    '33049910', // Veículos e bases (Ex: Pentravan)
+  ];
+  if (ncmInsumosEstrategicos.includes(ncmLimpo)) {
+    return 'alopaticos';
+  }
+
   // === COSMÉTICOS POR NCM ===
   const ncmCosmeticos = ['3301', '3302', '3303', '3304', '3305', '3306', '3307'];
   if (ncmCosmeticos.some(prefixo => ncmLimpo.startsWith(prefixo))) {
@@ -1240,7 +1332,7 @@ function classificarCategoriaProduto(ncm: string, nome: string): string {
 
   // NCMs de minerais e sais farmacêuticos (28xxxx, 25xxxx, 33xxxx, 39xxxx) - ATUALIZADO V4
   // REMOVIDO: 96020090 (cápsulas vazias) - deve ser classificado como EMBALAGEM
-  if (['28369911', '25262000', '28321090', '33012990', '33029019', '33049910', '39139090', '96020010'].includes(ncmLimpo)) {
+  if (['28369911', '25262000', '28321090', '33029019', '39139090', '96020010'].includes(ncmLimpo)) {
     return 'revenda';
   }
 
@@ -1265,7 +1357,7 @@ function classificarCategoriaProduto(ncm: string, nome: string): string {
   }
 
   // NCMs de alimentos/suplementos (11xxxx, 12xxxx, 08xxxx, 09xxxx, 21xxxx) - ATUALIZADO V4
-  if (['11081200', '11062000', '12119090', '09109900', '21021090', '21069030', '21069090'].includes(ncmLimpo)) {
+  if (['11081200', '11062000', '12119090', '09109900', '21021090', '21069090'].includes(ncmLimpo)) {
     return 'revenda';
   }
 

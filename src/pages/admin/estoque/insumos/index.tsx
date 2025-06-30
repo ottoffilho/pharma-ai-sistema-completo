@@ -137,10 +137,10 @@ const InsumosPage: React.FC = () => {
         // Calcular estoque real a partir dos lotes
         const produtosComEstoqueReal = data?.map(produto => ({
           ...produto,
-          // Calcular estoque real somando lotes ativos
-          estoque_atual: produto.lotes?.reduce((total, lote) => {
-            return lote.ativo ? total + (parseFloat(lote.quantidade_atual) || 0) : total;
-          }, 0) || 0
+          // Correção: Usar diretamente o estoque_atual do produto, 
+          // que já é a fonte da verdade consolidada pelo backend.
+          // O recálculo no frontend foi removido para evitar inconsistências.
+          estoque_atual: parseFloat(produto.estoque_atual) || 0
         })) || [];
         
         return produtosComEstoqueReal as Insumo[];

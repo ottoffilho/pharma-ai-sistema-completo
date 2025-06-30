@@ -1,7 +1,7 @@
 <prompt>
     <descricao>Instruções para análise de arquivos do projeto Pharma.AI</descricao>
     <passos>
-        <passo ordem="1">Analise o arquivo README.md, que esta dentro da pasta .cursor na raiz do projeto</passo>
+        <passo ordem="1">Analise o arquivo README.md, que esta dentro da pasta .cursor\implementacoes\README.md</passo>
         <passo ordem="2">Após a análise completa do README.md, analise os seguintes arquivos para entender o status do projeto: CONSOLIDACAO_FINAL.md, projeto_status.md, especificacoes_tecnicas.md, roadmap_2025.md, proposta_futura.md, guia_navegacao.md, especificacoes_modulos.md.</passo>
         <passo ordem="3">Após as análises anteriores, analise os arquivos de regras para compreender todas as diretrizes: rules.md e project-rules.mdc.</passo>
     </passos>

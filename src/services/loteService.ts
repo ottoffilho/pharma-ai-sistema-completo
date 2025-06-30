@@ -16,6 +16,10 @@ export interface LoteComProduto extends Lote {
     nome: string;
     codigo_interno?: string;
     unidade_medida: string;
+    fornecedores?: {
+      id: string;
+      nome: string;
+    }
   };
 }
 
@@ -71,11 +75,12 @@ export const loteService = {
         .from('lote')
         .select(`
           *,
-          produtos!produto_id (
+          produtos (
             id,
             nome,
             codigo_interno,
-            unidade_medida
+            unidade_medida,
+            fornecedores (id, nome)
           )
         `);
 
@@ -235,7 +240,7 @@ export const loteService = {
           data_fabricacao: loteData.data_fabricacao || null,
           data_validade: loteData.data_validade || null,
           quantidade_inicial: loteData.quantidade_inicial,
-          quantidade_atual: loteData.quantidade_atual,
+          quantidade_atual: loteData.quantidade_inicial,
           preco_custo_unitario: loteData.preco_custo_unitario || null,
           fornecedor_id: loteData.fornecedor_id || null,
           observacoes: loteData.observacoes || null,
