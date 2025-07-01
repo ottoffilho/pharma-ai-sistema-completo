@@ -15,10 +15,6 @@ import NovaReceitaPage from "./pages/admin/pedidos/nova-receita";
 import PrescriptionDetailsPage from "./pages/admin/pedidos/detalhes";
 import EditarReceitaPage from "./pages/admin/pedidos/[id]/editar";
 import UsuariosPage from "./pages/admin/usuarios/index";
-import UsuariosDebugPage from "./pages/admin/usuarios/debug";
-import DebugPermissions from "./pages/admin/usuarios/debug-permissions";
-import UsuariosSimplePage from "./pages/admin/usuarios/simple";
-import { TestPermissionsPage } from "./pages/admin/usuarios/test-permissions";
 import NovoUsuarioPage from "./pages/admin/usuarios/novo";
 import EditarUsuarioPage from "./pages/admin/usuarios/editar";
 import NovoLoteInsumoPage from "./pages/admin/estoque/lotes/novo";
@@ -320,20 +316,22 @@ const App = (): JSX.Element => {
                   <Route path="/debug" element={<Navigate to="/" replace />} />
                   <Route path="/debug-auth" element={<Navigate to="/" replace />} />
                   
-                  {/* Rota de debug para acessar admin sem autenticação */}
-                  <Route element={<PrivateRouteDebug />}>
-                    <Route 
-                      path="/admin-debug/*"
-                      element={
-                        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-                          <Routes>
-                            <Route path="" element={<AdminDashboard />} />
-                            <Route path="usuarios" element={<UsuariosPage />} />
-                          </Routes>
-                        </ThemeProvider>
-                      }
-                    />
-                  </Route>
+                  {/* Rota de debug para acessar admin sem autenticação - APENAS EM DESENVOLVIMENTO */}
+                  {import.meta.env.MODE === 'development' && import.meta.env.VITE_ENABLE_DEBUG_ROUTES === 'true' && (
+                    <Route element={<PrivateRouteDebug />}>
+                      <Route 
+                        path="/admin-debug/*"
+                        element={
+                          <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+                            <Routes>
+                              <Route path="" element={<AdminDashboard />} />
+                              <Route path="usuarios" element={<UsuariosPage />} />
+                            </Routes>
+                          </ThemeProvider>
+                        }
+                      />
+                    </Route>
+                  )}
                   {/* Rotas Protegidas - Dashboard/Admin, COM alternância de tema */}
                   <Route element={<ForceAuth />}>
                     <Route 
@@ -394,11 +392,6 @@ const App = (): JSX.Element => {
                             <Route path="configuracoes" element={<ConfiguracoesPage />} />
                             <Route path="configuracoes/markup" element={<ConfiguracaoMarkupPage />} />
                             <Route path="usuarios" element={<UsuariosPage />} />
-                            <Route path="usuarios/debug" element={<UsuariosDebugPage />} />
-                            <Route path="usuarios/debug-permissions" element={<DebugPermissions />} />
-                            <Route path="usuarios/simple" element={<UsuariosSimplePage />} />
-                            <Route path="usuarios/backup" element={<UsuariosSimplePage />} />
-                            <Route path="usuarios/test-permissions" element={<TestPermissionsPage />} />
                             <Route path="usuarios/novo" element={<ProtectedComponent modulo={ModuloSistema.USUARIOS_PERMISSOES} acao={AcaoPermissao.CRIAR} fallback={<Navigate to='/admin' replace />}><NovoUsuarioPage /></ProtectedComponent>} />
                             <Route path="usuarios/editar/:id" element={<ProtectedComponent modulo={ModuloSistema.USUARIOS_PERMISSOES} acao={AcaoPermissao.EDITAR} fallback={<Navigate to='/admin' replace />}><EditarUsuarioPage /></ProtectedComponent>} />
                             

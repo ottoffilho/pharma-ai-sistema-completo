@@ -430,6 +430,7 @@ export interface ValidacaoCNPJ {
   cnpj: string;
   valido: boolean;
   formatado: string;
+  codigo_verificador: string;
 }
 
 export interface ValidacaoNCM {
@@ -449,37 +450,4 @@ export interface ValidacaoChaveNFe {
   serie: string;
   numero: string;
   codigo_verificador: string;
-}
-
-export interface CreateNotaFiscal {
-  chave_acesso: string;
-  numero_nf: number;
-  serie: number;
-  modelo: number;
-  data_emissao: string;
-  data_saida_entrada?: string;
-  fornecedor_id?: UUID;
-  
-  // Valores
-  valor_produtos: number;
-  valor_frete?: number;
-  valor_seguro?: number;
-  valor_desconto?: number;
-  valor_outras_despesas?: number;
-  valor_total_nota: number;
-  
-  // Impostos
-  valor_icms?: number;
-  valor_ipi?: number;
-  valor_pis?: number;
-  valor_cofins?: number;
-  valor_total_tributos?: number;
-  
-  // Status
-  status?: string;
-  
-  // Informações do arquivo XML
-  xml_arquivo_path?: string;
-  xml_arquivo_nome?: string;
-  xml_arquivo_tamanho?: number;
 } 

@@ -16,7 +16,26 @@ if (!SUPABASE_PUBLISHABLE_KEY) {
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+    flowType: 'pkce',
+    // Configurações de segurança de sessão
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storageKey: 'pharma-ai-auth-token',
+  },
+  db: {
+    schema: 'public',
+  },
+  global: {
+    headers: {
+      'x-client-info': 'pharma-ai-web@1.0.0',
+      'x-application-name': 'Pharma.AI',
+    },
+  },
+});
 
 // Utilitário para obter a URL da Edge Function
 export function getSupabaseFunctionUrl(functionName: string) {

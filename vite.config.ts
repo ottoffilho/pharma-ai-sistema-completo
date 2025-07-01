@@ -3,8 +3,33 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
+// Validação de variáveis de ambiente críticas
+function validateEnvironment(mode: string) {
+  const requiredVars = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
+  const missing = requiredVars.filter(key => !process.env[key]);
+  
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+
+  // Validações de segurança
+  if (mode === 'production') {
+    // Em produção, debug deve estar desabilitado
+    if (process.env.VITE_ENABLE_FORCE_AUTH === 'true') {
+      throw new Error('FORCE_AUTH must be disabled in production');
+    }
+    
+    if (process.env.VITE_ENABLE_DEBUG_ROUTES === 'true') {
+      throw new Error('DEBUG_ROUTES must be disabled in production');
+    }
+  }
+}
+
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  validateEnvironment(mode);
+  
+  return {
   server: {
     host: "::",
     port: 8080,
@@ -60,4 +85,5 @@ export default defineConfig(({ mode }) => ({
       }
     }
   }
-}));
+};
+});

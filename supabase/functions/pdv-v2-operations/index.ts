@@ -1,6 +1,36 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
+
+// Tipos para Payloads de Ações
+interface ConfiguracoesPDV {
+  tema: 'light' | 'dark' | 'auto';
+  tamanho_fonte: 'pequeno' | 'normal' | 'grande';
+  som_habilitado: boolean;
+  confirmar_antes_finalizar: boolean;
+  imprimir_automatico: boolean;
+  abrir_gaveta_automatico: boolean;
+  atalhos_teclado: Record<string, string>;
+  mostrar_produtos_favoritos: boolean;
+  mostrar_ultimas_vendas: boolean;
+  mostrar_metricas: boolean;
+  layout_preferido: 'padrao' | 'compacto' | 'expandido';
+}
+
+interface Pagamento {
+  forma_pagamento: string;
+  valor: number;
+  numero_autorizacao?: string;
+  bandeira_cartao?: string;
+  codigo_transacao?: string;
+}
+
+interface ProdutoVenda {
+  id: string;
+  nome: string;
+  quantidade: number;
+  preco_unitario: number;
+}
 
 interface RequestData {
   action: string;
@@ -32,30 +62,29 @@ serve(async (req) => {
       throw new Error('Usuário não autenticado');
     }
 
-    const requestData: RequestData = await req.json();
-    const { action } = requestData;
+    const { action, ...payload } = await req.json();
 
     switch (action) {
       case 'buscar_configuracoes':
         return await buscarConfiguracoes(supabase, user.id);
       
       case 'atualizar_configuracoes':
-        return await atualizarConfiguracoes(supabase, user.id, requestData.configuracoes);
+        return await atualizarConfiguracoes(supabase, user.id, payload.configuracoes);
       
       case 'favoritar_produto':
-        return await favoritarProduto(supabase, user.id, requestData.produto_id);
+        return await favoritarProduto(supabase, user.id, payload.produto_id);
       
       case 'sugerir_produtos':
-        return await sugerirProdutos(supabase, requestData.cliente_id, requestData.produtos_atuais);
+        return await sugerirProdutos(supabase, payload.cliente_id, payload.produtos_atuais);
       
       case 'buscar_cliente_preferencias':
-        return await buscarClientePreferencias(supabase, requestData.cliente_id);
+        return await buscarClientePreferencias(supabase, payload.cliente_id);
       
       case 'calcular_desconto_inteligente':
-        return await calcularDescontoInteligente(supabase, requestData.cliente_id, requestData.produtos, requestData.total);
+        return await calcularDescontoInteligente(supabase, payload.cliente_id, payload.produtos, payload.total);
       
       case 'processar_pagamentos':
-        return await processarPagamentos(supabase, requestData.venda_id, requestData.pagamentos);
+        return await processarPagamentos(supabase, payload.venda_id, payload.pagamentos);
       
       default:
         throw new Error(`Ação não reconhecida: ${action}`);
@@ -75,7 +104,7 @@ serve(async (req) => {
   }
 });
 
-async function buscarConfiguracoes(supabase: any, usuarioId: string) {
+async function buscarConfiguracoes(supabase: SupabaseClient, usuarioId: string) {
   try {
     const { data, error } = await supabase
       .from('configuracoes_pdv')
@@ -88,7 +117,7 @@ async function buscarConfiguracoes(supabase: any, usuarioId: string) {
     }
 
     // Configurações padrão se não existir
-    const configuracaoPadrao = {
+    const configuracaoPadrao: ConfiguracoesPDV = {
       tema: 'light',
       tamanho_fonte: 'normal',
       som_habilitado: true,
@@ -114,7 +143,7 @@ async function buscarConfiguracoes(supabase: any, usuarioId: string) {
   }
 }
 
-async function atualizarConfiguracoes(supabase: any, usuarioId: string, configuracoes: any) {
+async function atualizarConfiguracoes(supabase: SupabaseClient, usuarioId: string, configuracoes: ConfiguracoesPDV) {
   try {
     const { error } = await supabase
       .from('configuracoes_pdv')
@@ -135,7 +164,7 @@ async function atualizarConfiguracoes(supabase: any, usuarioId: string, configur
   }
 }
 
-async function favoritarProduto(supabase: any, usuarioId: string, produtoId: string) {
+async function favoritarProduto(supabase: SupabaseClient, usuarioId: string, produtoId: string) {
   try {
     // Verificar se já existe
     const { data: existente } = await supabase
@@ -167,7 +196,7 @@ async function favoritarProduto(supabase: any, usuarioId: string, produtoId: str
   }
 }
 
-async function sugerirProdutos(supabase: any, clienteId?: string, produtosAtuais?: any[]) {
+async function sugerirProdutos(supabase: SupabaseClient, clienteId?: string, produtosAtuais?: ProdutoVenda[]) {
   try {
     // Lógica simples de sugestão baseada em produtos populares
     const { data: produtosPopulares, error } = await supabase
@@ -195,7 +224,7 @@ async function sugerirProdutos(supabase: any, clienteId?: string, produtosAtuais
   }
 }
 
-async function buscarClientePreferencias(supabase: any, clienteId: string) {
+async function buscarClientePreferencias(supabase: SupabaseClient, clienteId: string) {
   try {
     const { data, error } = await supabase
       .from('clientes_preferencias')
@@ -219,7 +248,7 @@ async function buscarClientePreferencias(supabase: any, clienteId: string) {
   }
 }
 
-async function calcularDescontoInteligente(supabase: any, clienteId: string, produtos: any[], total: number) {
+async function calcularDescontoInteligente(supabase: SupabaseClient, clienteId: string, produtos: ProdutoVenda[], total: number) {
   try {
     // Lógica simples de desconto baseada no histórico do cliente
     const { data: cliente, error } = await supabase
@@ -273,7 +302,7 @@ async function calcularDescontoInteligente(supabase: any, clienteId: string, pro
   }
 }
 
-async function processarPagamentos(supabase: any, vendaId: string, pagamentos: any[]) {
+async function processarPagamentos(supabase: SupabaseClient, vendaId: string, pagamentos: Pagamento[]) {
   try {
     // Inserir pagamentos
     const pagamentosData = pagamentos.map(pag => ({

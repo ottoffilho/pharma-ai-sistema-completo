@@ -7,10 +7,16 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { ItemCarrinho, CarrinhoCompras, ClienteVenda, FormaPagamento } from '@/types/vendas';
-import { UUID } from '@/types/database';
+import { 
+  ItemCarrinho, 
+  CarrinhoCompras, 
+  ClienteVenda, 
+  FormaPagamento,
+  AberturaCaixa
+} from '@/types/vendas';
+import { UUID, Produto } from '@/types/database';
 
-interface ProdutoPDV {
+interface ProdutoPDV extends Partial<Produto> {
   id: UUID;
   nome: string;
   codigo_interno?: string;
@@ -32,6 +38,7 @@ interface ProdutoPDV {
     preco_promocional: number;
     validade: string;
   };
+  layout_preferido: 'padrao' | 'compacto' | 'expandido';
 }
 
 interface PagamentoPDV {
@@ -116,10 +123,10 @@ export function usePDVv2() {
     layout_preferido: 'padrao'
   });
   
-  const [caixaAberto, setCaixaAberto] = useState<any>(null);
+  const [caixaAberto, setCaixaAberto] = useState<AberturaCaixa | null>(null);
   const [isProcessando, setIsProcessando] = useState(false);
   
-  const [tipoVenda, setTipoVenda] = useState<'MANIPULADO' | 'ALOPATICO' | 'DELIVERY' | 'PBM'>('MANIPULADO');
+  const [tipoVenda, setTipoVenda] = useState<'MANIPULADO' | 'ALOPATICO' | 'DELIVERY' | 'PBM'>('ALOPATICO');
   const [ordemSelecionada, setOrdemSelecionada] = useState<{ id: string; numero: string } | null>(null);
   
   // Variáveis do ambiente
@@ -366,25 +373,8 @@ export function usePDVv2() {
   // FUNÇÕES DE CLIENTE
   // =====================================================
   
-  const selecionarCliente = useCallback(async (cliente: any) => {
-    const clienteVenda: ClienteVenda = {
-      id: cliente.id,
-      nome: cliente.nome,
-      cpf: cliente.cpf,
-      cnpj: cliente.cnpj,
-      documento: cliente.cpf || cliente.cnpj || '',
-      telefone: cliente.telefone,
-      email: cliente.email,
-      endereco: cliente.endereco,
-      cidade: cliente.cidade,
-      estado: cliente.estado,
-      cep: cliente.cep,
-      data_nascimento: cliente.data_nascimento,
-      created_at: cliente.created_at,
-      updated_at: cliente.updated_at
-    };
-    
-    setClienteSelecionado(clienteVenda);
+  const selecionarCliente = useCallback(async (cliente: ClienteVenda) => {
+    setClienteSelecionado(cliente);
     
     // Buscar preferências do cliente
     await buscarPreferenciasCliente(cliente.id);
@@ -645,8 +635,19 @@ export function usePDVv2() {
         .eq('ordem_producao_id', ordemId);
       if (itensError) throw itensError;
 
+      type OrdemProducaoItem = {
+        produto_id: string;
+        quantidade: number;
+        preco_unitario: number;
+        produto: {
+          nome: string;
+          preco_venda: number;
+          estoque_atual: number;
+        } | null;
+      };
+
       // Monta carrinho read-only
-      const itensCarrinho = (itens || []).map((it: any) => ({
+      const itensCarrinho = (itens as OrdemProducaoItem[] || []).map((it) => ({
         produto_id: it.produto_id,
         produto_nome: it.produto?.nome || 'Produto',
         produto_codigo: '',
@@ -660,9 +661,10 @@ export function usePDVv2() {
       setCarrinho(calcularTotais(itensCarrinho));
       setOrdemSelecionada({ id: ordem.id, numero: ordem.numero_ordem });
       toast({ title: 'OP carregada', description: `Itens da OP ${ordem.numero_ordem} carregados` });
-    } catch (e) {
+    } catch (error) {
+      const e = error as Error;
       console.error(e);
-      toast({ title: 'Erro', description: 'Falha ao carregar OP', variant: 'destructive' });
+      toast({ title: 'Erro', description: e.message || 'Falha ao carregar OP', variant: 'destructive' });
     }
   }, [calcularTotais, toast]);
   
@@ -703,29 +705,17 @@ export function usePDVv2() {
       if (!confirmado) return false;
     }
     
+    let timeoutId: number | undefined;
     try {
       setIsProcessando(true);
-      
-      console.log('🔄 Iniciando processo de finalização de venda...');
-      console.log('🔍 URL Supabase:', supabaseUrl);
-      console.log('🔍 Anon Key existe:', !!supabaseAnonKey);
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
       
-      console.log('👤 Usuário autenticado:', user.id);
-      
-      // Obter token de autenticação do usuário
       const { data: session } = await supabase.auth.getSession();
       const userToken = session.session?.access_token;
+      if (!userToken) throw new Error('Token de autenticação não encontrado');
       
-      if (!userToken) {
-        throw new Error('Token de autenticação não encontrado');
-      }
-      
-      console.log('🔑 Token obtido:', userToken.substring(0, 20) + '...');
-      
-      // 1. CRIAR VENDA (status: rascunho)
       const vendaPayload = {
         cliente_id: clienteSelecionado?.id,
         cliente_nome: clienteSelecionado?.nome,
@@ -750,58 +740,35 @@ export function usePDVv2() {
         }))
       };
       
-      console.log('📦 Payload da venda:', vendaPayload);
-      console.log('🌐 URL completa:', `${supabaseUrl}/functions/v1/vendas-operations?action=criar-venda`);
-      
-      // Fazer a requisição com timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
-      
-      try {
-        const criarResponse = await fetch(`${supabaseUrl}/functions/v1/vendas-operations?action=criar-venda`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${userToken}`,
-            'apikey': supabaseAnonKey
-          },
-          body: JSON.stringify(vendaPayload),
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        console.log('📡 Resposta criar venda - Status:', criarResponse.status);
-        console.log('📡 Resposta criar venda - OK:', criarResponse.ok);
-      
+      timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const criarResponse = await fetch(`${supabaseUrl}/functions/v1/vendas-operations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userToken}`,
+          'apikey': supabaseAnonKey
+        },
+        body: JSON.stringify({ ...vendaPayload, action: 'CRIAR_VENDA_PDV' }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
       if (!criarResponse.ok) {
-        let errorData;
-        try {
-          errorData = await criarResponse.json();
-        } catch (e) {
-          console.error('❌ Erro ao fazer parse da resposta de erro:', e);
-          errorData = { error: `HTTP ${criarResponse.status} - ${criarResponse.statusText}` };
-        }
-        console.error('❌ Erro na resposta criar venda:', errorData);
-        throw new Error(errorData.error || 'Erro ao criar venda');
+        const errorData = await criarResponse.json().catch(() => ({ error: `HTTP ${criarResponse.status} - ${criarResponse.statusText}` }));
+        throw new Error(errorData.error || 'Erro ao criar a venda no backend.');
       }
-      
-      let criarResponseData;
-      try {
-        criarResponseData = await criarResponse.json();
-        console.log('✅ Resposta criar venda:', criarResponseData);
-      } catch (e) {
-        console.error('❌ Erro ao fazer parse da resposta de sucesso:', e);
-        throw new Error('Resposta inválida da API');
-      }
+
+      const criarResponseData = await criarResponse.json();
       const { venda_id } = criarResponseData;
-      
+
       if (!venda_id) {
-        throw new Error('ID da venda não retornado');
+        throw new Error('API de criação não retornou o ID da venda.');
       }
-      
-      // 2. FINALIZAR VENDA (status: finalizada)
-      const finalizarResponse = await fetch(`${supabaseUrl}/functions/v1/vendas-operations?action=finalizar-venda`, {
+
+      const finalizarResponse = await fetch(`${supabaseUrl}/functions/v1/vendas-operations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -809,101 +776,53 @@ export function usePDVv2() {
           'apikey': supabaseAnonKey
         },
         body: JSON.stringify({
+          action: 'FINALIZAR_VENDA',
           venda_id: venda_id,
           pagamentos: pagamentos.map(pag => ({
             forma_pagamento: pag.forma_pagamento,
             valor: pag.valor,
-            taxa_cartao: pag.taxa_cartao,
-            valor_liquido: pag.valor_liquido,
-            numero_autorizacao: pag.numero_autorizacao,
             bandeira_cartao: pag.bandeira_cartao,
+            numero_autorizacao: pag.numero_autorizacao,
             codigo_transacao: pag.codigo_transacao,
-            pix_chave: pag.pix_chave,
-            pix_comprovante: pag.pix_comprovante,
-            parcelas: pag.parcelas,
-            dias_vencimento: pag.dias_vencimento
+            observacoes: pag.observacoes,
           })),
-          troco: troco,
-          total_pago: totalPago
+          troco: troco
         })
       });
-      
+
       if (!finalizarResponse.ok) {
-        const errorData = await finalizarResponse.json();
-        // Se falhou ao finalizar, tenta continuar mas avisa do problema
-        console.error('Erro ao finalizar venda:', errorData);
-        toast({
-          title: "Aviso",
-          description: "Venda criada mas pode estar pendente de finalização",
-          variant: "destructive"
-        });
+        const errorData = await finalizarResponse.json().catch(() => ({}));
+        // A venda foi criada, mas a finalização falhou.
+        // O usuário deve ser notificado para tentar finalizar manualmente.
+        throw new Error(errorData.error || 'Venda criada, mas falhou ao finalizar. Verifique o histórico de vendas.');
       }
       
       toast({
         title: "✅ Venda finalizada!",
-        description: `Venda #${venda_id} processada com sucesso`,
+        description: `Venda #${criarResponseData?.numero_venda || venda_id} processada.`,
         duration: 3000,
       });
       
-      // INVALIDAR CACHE - CRUCIAL para atualizar listas de vendas
-      try {
-        await Promise.all([
-          // Invalidar queries de vendas
-          queryClient.invalidateQueries({ queryKey: ['vendas'] }),
-          queryClient.invalidateQueries({ queryKey: ['vendas-list'] }),
-          queryClient.invalidateQueries({ queryKey: ['vendas-cards'] }),
-          queryClient.invalidateQueries({ queryKey: ['vendas-historico'] }),
-          queryClient.invalidateQueries({ queryKey: ['vendas-metricas'] }),
-          
-          // Invalidar queries de caixa
-          queryClient.invalidateQueries({ queryKey: ['caixa'] }),
-          queryClient.invalidateQueries({ queryKey: ['caixa-movimentacao'] }),
-          
-          // Invalidar queries de estoque (produtos vendidos)
-          queryClient.invalidateQueries({ queryKey: ['produtos'] }),
-          queryClient.invalidateQueries({ queryKey: ['estoque'] }),
-          
-          // Invalidar queries financeiras
-          queryClient.invalidateQueries({ queryKey: ['financeiro'] }),
-          queryClient.invalidateQueries({ queryKey: ['movimentacoes'] })
-        ]);
-        
-        console.log('✅ Cache invalidado com sucesso - listas devem atualizar automaticamente');
-      } catch (error) {
-        console.error('⚠️ Erro ao invalidar cache:', error);
-        // Não falha a venda por causa disso, mas avisa
-        toast({
-          title: "Aviso",
-          description: "Venda processada, mas pode ser necessário atualizar a página para ver nas listas",
-          variant: "default",
-          duration: 3000,
-        });
-      }
+      await queryClient.invalidateQueries({ queryKey: ['vendas', 'caixa', 'produtos', 'estoque', 'financeiro'] });
       
-      // Limpar tudo para próxima venda
       limparCarrinho();
-      
       return true;
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
-        throw new Error('Timeout na requisição - tente novamente');
-      }
-      throw error;
+
+    } catch (error) {
+      if (timeoutId) clearTimeout(timeoutId);
+      const errorMessage = error instanceof Error ? error.message : "Ocorreu um erro desconhecido";
+      
+      toast({
+        title: "❌ Erro ao Finalizar Venda",
+        description: errorMessage,
+        variant: "destructive",
+        duration: 5000,
+      });
+      return false;
+    } finally {
+      setIsProcessando(false);
     }
-  } catch (error: any) {
-    console.error('Erro ao finalizar venda:', error);
-    toast({
-      title: "❌ Erro ao finalizar venda",
-      description: error.message || "Falha ao processar a venda",
-      variant: "destructive",
-      duration: 5000,
-    });
-    return false;
-  } finally {
-    setIsProcessando(false);
-  }
-}, [carrinho, restante, pagamentos, configuracoes, clienteSelecionado, descontoGeral, caixaAberto, troco, totalPago, supabaseUrl, supabaseAnonKey, limparCarrinho, queryClient, tipoVenda, ordemSelecionada]);
+  }, [carrinho, restante, pagamentos, configuracoes, clienteSelecionado, descontoGeral, caixaAberto, troco, totalPago, supabaseUrl, supabaseAnonKey, limparCarrinho, queryClient, tipoVenda, ordemSelecionada]);
   
   // =====================================================
   // EFEITOS

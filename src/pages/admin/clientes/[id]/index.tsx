@@ -57,50 +57,8 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-
-// =====================================================
-// TIPOS E INTERFACES
-// =====================================================
-
-interface Cliente {
-  id: string;
-  nome: string;
-  email?: string;
-  telefone?: string;
-  endereco?: string;
-  cidade?: string;
-  estado?: string;
-  cep?: string;
-  cpf?: string;
-  cnpj?: string;
-  tipo_pessoa: 'PF' | 'PJ';
-  nome_fantasia?: string;
-  rg?: string;
-  observacoes?: string;
-  data_nascimento?: string;
-  total_compras: number;
-  ultima_compra?: string;
-  pontos_fidelidade: number;
-  ativo: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-interface Compra {
-  id: string;
-  data_venda: string;
-  valor_total: number;
-  status: string;
-  produtos_vendidos: any[];
-}
-
-interface Estatisticas {
-  total_vendas: number;
-  ticket_medio: number;
-  ultima_compra: string | null;
-  produtos_favoritos: string[];
-  freq_compras_mes: number;
-}
+import type { Cliente, ClienteHistoricoCompra, EstatisticasClienteDetalhes } from '@/types/cliente';
+import type { ItemVenda } from '@/types/vendas';
 
 // =====================================================
 // COMPONENTE PRINCIPAL
@@ -125,7 +83,7 @@ export default function DetalhesClientePage() {
         .single();
       
       if (error) throw error;
-      return data as Cliente;
+      return data;
     },
     enabled: !!id,
   });
@@ -141,28 +99,38 @@ export default function DetalhesClientePage() {
         .select(`
           id,
           data_venda,
-          valor_total,
+          total,
           status,
-          produtos_vendidos
+          itens_venda(count)
         `)
         .eq('cliente_id', id)
         .order('data_venda', { ascending: false })
         .limit(10);
       
       if (error) throw error;
-      return data as Compra[];
+      
+      // Mapear para o tipo ClienteHistoricoCompra
+      return data.map(venda => ({
+        id: venda.id,
+        data_venda: venda.data_venda,
+        valor_total: venda.total,
+        status: venda.status,
+        itens_count: Array.isArray(venda.itens_venda) ? venda.itens_venda[0]?.count ?? 0 : 0,
+        numero_venda: '', // Adicionar se disponível
+        status_pagamento: '' // Adicionar se disponível
+      }));
     },
     enabled: !!id,
   });
 
   // Query para estatísticas do cliente
   const { data: estatisticas } = useQuery({
-    queryKey: ['cliente-estatisticas', id],
+    queryKey: ['cliente-estatisticas', id, compras],
     queryFn: async () => {
-      if (!id) return null;
+      if (!id || !compras) return null;
       
       // Calcular estatísticas básicas
-      const stats: Estatisticas = {
+      const stats: EstatisticasClienteDetalhes = {
         total_vendas: compras.length,
         ticket_medio: compras.length > 0 ? compras.reduce((acc, compra) => acc + compra.valor_total, 0) / compras.length : 0,
         ultima_compra: compras.length > 0 ? compras[0].data_venda : null,
@@ -716,7 +684,7 @@ export default function DetalhesClientePage() {
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <Package className="h-4 w-4 text-muted-foreground" />
-                                {compra.produtos_vendidos?.length || 0} item(s)
+                                {compra.itens_count || 0} item(s)
                               </div>
                             </TableCell>
                           </TableRow>

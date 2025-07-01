@@ -1,6 +1,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://deno.land/x/zod@v3.23.4/mod.ts";
 import { corsHeaders } from "./cors.ts";
+
+// Nova interface para a configuração do rótulo
+interface RotuloConfig {
+  layout: 'padrao' | 'personalizado';
+  campos_visiveis: string[];
+  template_html?: string;
+  incluir_logo?: boolean;
+}
 
 interface Database {
   public: {
@@ -14,7 +23,7 @@ interface Database {
           descricao: string | null;
           desconto_maximo: number;
           valor_minimo: number;
-          rotulo_config: any;
+          rotulo_config: RotuloConfig;
           ativo: boolean;
           created_at: string;
           updated_at: string;
@@ -28,7 +37,7 @@ interface Database {
           descricao?: string | null;
           desconto_maximo?: number;
           valor_minimo?: number;
-          rotulo_config?: any;
+          rotulo_config?: RotuloConfig;
           ativo?: boolean;
           created_by?: string | null;
         };
@@ -39,7 +48,7 @@ interface Database {
           descricao?: string | null;
           desconto_maximo?: number;
           valor_minimo?: number;
-          rotulo_config?: any;
+          rotulo_config?: RotuloConfig;
           ativo?: boolean;
         };
       };
@@ -91,88 +100,45 @@ const supabase = createClient<Database>(
   }
 );
 
-// Schemas de validação
-const criarFormaSchema = {
-  nome: { required: true, type: 'string', minLength: 2, maxLength: 100 },
-  abreviatura: { required: false, type: 'string', maxLength: 10 },
-  tipo_uso: { required: false, type: 'string', maxLength: 50 },
-  descricao: { required: false, type: 'string' },
-  desconto_maximo: { required: false, type: 'number', min: 0, max: 100 },
-  valor_minimo: { required: false, type: 'number', min: 0 },
-  rotulo_config: { required: false, type: 'object' },
-  ativo: { required: false, type: 'boolean' }
-};
+// Esquemas de validação Zod
+const rotuloConfigSchema = z.object({
+  layout: z.enum(['padrao', 'personalizado']),
+  campos_visiveis: z.array(z.string()),
+  template_html: z.string().optional(),
+  incluir_logo: z.boolean().optional(),
+}).strict();
 
-const criarProcessoSchema = {
-  forma_id: { required: true, type: 'string' },
-  ordem: { required: true, type: 'number', min: 1 },
-  nome_processo: { required: true, type: 'string', minLength: 2 },
-  tipo_processo: { required: true, type: 'string', enum: ['PRODUCAO', 'QUALIDADE', 'LOGISTICA'] },
-  ponto_controle: { required: false, type: 'boolean' },
-  tempo_estimado_min: { required: false, type: 'number', min: 0 },
-  instrucoes: { required: false, type: 'string' },
-  equipamentos_necessarios: { required: false, type: 'array' }
-};
+const criarFormaSchema = z.object({
+  nome: z.string().min(2).max(100),
+  abreviatura: z.string().max(10).optional().nullable(),
+  tipo_uso: z.string().max(50).optional().nullable(),
+  descricao: z.string().optional().nullable(),
+  desconto_maximo: z.number().min(0).max(100).optional(),
+  valor_minimo: z.number().min(0).optional(),
+  rotulo_config: rotuloConfigSchema.optional(),
+  ativo: z.boolean().optional(),
+}).strict();
 
-function validateData(data: any, schema: any): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
+const atualizarFormaSchema = criarFormaSchema.partial();
 
-  for (const [field, rules] of Object.entries(schema)) {
-    const value = data[field];
-    const fieldRules = rules as any;
+const criarProcessoSchema = z.object({
+  forma_id: z.string().uuid(),
+  ordem: z.number().min(1),
+  nome_processo: z.string().min(2),
+  tipo_processo: z.enum(['PRODUCAO', 'QUALIDADE', 'LOGISTICA']),
+  ponto_controle: z.boolean().optional(),
+  tempo_estimado_min: z.number().min(0).optional().nullable(),
+  instrucoes: z.string().optional().nullable(),
+  equipamentos_necessarios: z.array(z.string()).optional().nullable(),
+}).strict();
 
-    // Verificar se campo obrigatório está presente
-    if (fieldRules.required && (value === undefined || value === null || value === '')) {
-      errors.push(`Campo '${field}' é obrigatório`);
-      continue;
-    }
+const atualizarProcessoSchema = criarProcessoSchema.omit({ forma_id: true }).partial();
 
-    // Pular validação se campo não é obrigatório e está vazio
-    if (!fieldRules.required && (value === undefined || value === null || value === '')) {
-      continue;
-    }
-
-    // Validar tipo
-    if (fieldRules.type === 'string' && typeof value !== 'string') {
-      errors.push(`Campo '${field}' deve ser uma string`);
-    } else if (fieldRules.type === 'number' && typeof value !== 'number') {
-      errors.push(`Campo '${field}' deve ser um número`);
-    } else if (fieldRules.type === 'boolean' && typeof value !== 'boolean') {
-      errors.push(`Campo '${field}' deve ser um boolean`);
-    } else if (fieldRules.type === 'object' && typeof value !== 'object') {
-      errors.push(`Campo '${field}' deve ser um objeto`);
-    } else if (fieldRules.type === 'array' && !Array.isArray(value)) {
-      errors.push(`Campo '${field}' deve ser um array`);
-    }
-
-    // Validar comprimento mínimo e máximo para strings
-    if (fieldRules.type === 'string' && typeof value === 'string') {
-      if (fieldRules.minLength && value.length < fieldRules.minLength) {
-        errors.push(`Campo '${field}' deve ter pelo menos ${fieldRules.minLength} caracteres`);
-      }
-      if (fieldRules.maxLength && value.length > fieldRules.maxLength) {
-        errors.push(`Campo '${field}' pode ter no máximo ${fieldRules.maxLength} caracteres`);
-      }
-    }
-
-    // Validar valores mínimo e máximo para números
-    if (fieldRules.type === 'number' && typeof value === 'number') {
-      if (fieldRules.min !== undefined && value < fieldRules.min) {
-        errors.push(`Campo '${field}' deve ser maior ou igual a ${fieldRules.min}`);
-      }
-      if (fieldRules.max !== undefined && value > fieldRules.max) {
-        errors.push(`Campo '${field}' deve ser menor ou igual a ${fieldRules.max}`);
-      }
-    }
-
-    // Validar enum
-    if (fieldRules.enum && !fieldRules.enum.includes(value)) {
-      errors.push(`Campo '${field}' deve ser um dos valores: ${fieldRules.enum.join(', ')}`);
-    }
-  }
-
-  return { valid: errors.length === 0, errors };
-}
+// Tipos inferidos do Zod
+type CriarFormaPayload = z.infer<typeof criarFormaSchema>;
+type AtualizarFormaPayload = z.infer<typeof atualizarFormaSchema>;
+type CriarProcessoPayload = z.infer<typeof criarProcessoSchema>;
+type AtualizarProcessoPayload = z.infer<typeof atualizarProcessoSchema>;
 
 serve(async (req) => {
   // Handle CORS
@@ -348,7 +314,9 @@ async function obterFormaFarmaceutica(id: string) {
 
     // Ordenar processos por ordem
     if (data.forma_processos) {
-      data.forma_processos.sort((a: any, b: any) => a.ordem - b.ordem);
+      const processos = data.forma_processos as Database['public']['Tables']['forma_processos']['Row'][];
+      processos.sort((a, b) => a.ordem - b.ordem);
+      data.forma_processos = processos;
     }
 
     return new Response(
@@ -365,22 +333,15 @@ async function obterFormaFarmaceutica(id: string) {
   }
 }
 
-async function criarFormaFarmaceutica(body: any, userId: string) {
-  const validation = validateData(body, criarFormaSchema);
-  
-  if (!validation.valid) {
-    return new Response(
-      JSON.stringify({ error: "Dados inválidos", details: validation.errors }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-
+async function criarFormaFarmaceutica(body: unknown, userId: string) {
   try {
+    const formaData = criarFormaSchema.parse(body);
+
     // Verificar se já existe forma com mesmo nome
     const { data: existingForma } = await supabase
       .from('formas_farmaceuticas')
       .select('id')
-      .eq('nome', body.nome)
+      .eq('nome', formaData.nome)
       .single();
 
     if (existingForma) {
@@ -390,51 +351,38 @@ async function criarFormaFarmaceutica(body: any, userId: string) {
       );
     }
 
-    // Verificar se usuário existe na tabela usuarios (pode não existir em dev/local)
-    let createdBy: string | null = null;
-    const { data: usuarioExists } = await supabase
-      .from('usuarios')
-      .select('id')
-      .eq('id', userId)
-      .single();
-
-    if (usuarioExists) {
-      createdBy = userId;
-    }
-
-    const formaData = {
-      ...body,
-      created_by: createdBy,
-      rotulo_config: body.rotulo_config || {}
-    };
-
-    const { data, error } = await supabase
+    const { data: newUser, error } = await supabase
       .from('formas_farmaceuticas')
-      .insert(formaData)
+      .insert({ ...formaData, created_by: userId })
       .select()
       .single();
 
     if (error) throw error;
 
     return new Response(
-      JSON.stringify({ success: true, data }),
+      JSON.stringify({ success: true, data: newUser }),
       { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return new Response(
+        JSON.stringify({ error: "Dados inválidos", details: error.errors }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     console.error("Erro ao criar forma farmacêutica:", error);
     return new Response(
-      JSON.stringify({ error: "Erro ao criar forma farmacêutica", details: error.message }),
+      JSON.stringify({ error: "Erro ao criar forma farmacêutica", details: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 }
 
-async function atualizarFormaFarmaceutica(id: string, body: any) {
-  // Remover campos que não devem ser atualizados
-  const { created_by, created_at, ...updateData } = body;
-
+async function atualizarFormaFarmaceutica(id: string, body: unknown) {
   try {
+    const updateData = atualizarFormaSchema.parse(body);
+
     // Verificar se a forma existe
     const { data: existingForma } = await supabase
       .from('formas_farmaceuticas')
@@ -449,7 +397,6 @@ async function atualizarFormaFarmaceutica(id: string, body: any) {
       );
     }
 
-    // Verificar se o nome não conflita com outra forma
     if (updateData.nome) {
       const { data: conflictForma } = await supabase
         .from('formas_farmaceuticas')
@@ -481,9 +428,15 @@ async function atualizarFormaFarmaceutica(id: string, body: any) {
     );
 
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return new Response(
+        JSON.stringify({ error: "Dados inválidos", details: error.errors }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     console.error("Erro ao atualizar forma farmacêutica:", error);
     return new Response(
-      JSON.stringify({ error: "Erro ao atualizar forma farmacêutica", details: error.message }),
+      JSON.stringify({ error: "Erro ao atualizar forma farmacêutica", details: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -546,20 +499,12 @@ async function listarProcessosForma(formaId: string) {
   }
 }
 
-async function criarProcesso(body: any) {
-  const validation = validateData(body, criarProcessoSchema);
-  
-  if (!validation.valid) {
-    return new Response(
-      JSON.stringify({ error: "Dados inválidos", details: validation.errors }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-
+async function criarProcesso(body: unknown) {
   try {
+    const processoData = criarProcessoSchema.parse(body);
     const { data, error } = await supabase
       .from('forma_processos')
-      .insert(body)
+      .insert(processoData)
       .select()
       .single();
 
@@ -571,19 +516,26 @@ async function criarProcesso(body: any) {
     );
 
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return new Response(
+        JSON.stringify({ error: "Dados inválidos", details: error.errors }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     console.error("Erro ao criar processo:", error);
     return new Response(
-      JSON.stringify({ error: "Erro ao criar processo", details: error.message }),
+      JSON.stringify({ error: "Erro ao criar processo", details: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 }
 
-async function atualizarProcesso(id: string, body: any) {
+async function atualizarProcesso(id: string, body: unknown) {
   try {
+    const updateData = atualizarProcessoSchema.parse(body);
     const { data, error } = await supabase
       .from('forma_processos')
-      .update(body)
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();
@@ -603,9 +555,15 @@ async function atualizarProcesso(id: string, body: any) {
     );
 
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return new Response(
+        JSON.stringify({ error: "Dados inválidos", details: error.errors }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     console.error("Erro ao atualizar processo:", error);
     return new Response(
-      JSON.stringify({ error: "Erro ao atualizar processo", details: error.message }),
+      JSON.stringify({ error: "Erro ao atualizar processo", details: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

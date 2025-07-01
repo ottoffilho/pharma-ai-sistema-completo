@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { log, error as logError } from '@/lib/logger';
 
 // Definir aqui se queremos forçar o acesso (apenas para desenvolvimento)
-const FORCE_AUTH = false;
+// Só permite FORCE_AUTH em desenvolvimento E com variável de ambiente específica
+const FORCE_AUTH = import.meta.env.MODE === 'development' && 
+                   import.meta.env.VITE_ENABLE_FORCE_AUTH === 'true';
 // Timeout máximo para verificação (10 segundos)
 const MAX_VERIFY_TIME = 10000;
 // Número máximo de tentativas de carregamento

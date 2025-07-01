@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { vendasService } from '@/services/vendasService';
 import { useToast } from '@/hooks/use-toast';
+import type { VendaCompleta } from '@/types/vendas';
 
 export interface VendasCardsData {
   vendas: {
@@ -160,12 +161,12 @@ export function useVendasCards(): UseVendasCardsReturn {
   /**
    * Calcula os produtos mais vendidos a partir das vendas
    */
-  const calcularProdutosMaisVendidos = (vendas: any[]) => {
+  const calcularProdutosMaisVendidos = (vendas: VendaCompleta[]) => {
     const produtosMap = new Map<string, { produto_nome: string; quantidade: number; valor_total: number }>();
 
     vendas.forEach(venda => {
       if (venda.itens) {
-        venda.itens.forEach((item: any) => {
+        venda.itens.forEach(item => {
           const key = item.produto_nome;
           const existing = produtosMap.get(key) || { 
             produto_nome: item.produto_nome, 
@@ -187,17 +188,18 @@ export function useVendasCards(): UseVendasCardsReturn {
   /**
    * Calcula as estatísticas de pagamentos a partir das vendas
    */
-  const calcularEstatisticasPagamentos = (vendas: any[]) => {
+  const calcularEstatisticasPagamentos = (vendas: VendaCompleta[]) => {
     const estatisticas = {
       dinheiro: 0,
       pix: 0,
       cartao_credito: 0,
-      cartao_debito: 0
+      cartao_debito: 0,
     };
 
     vendas.forEach(venda => {
       if (venda.pagamentos) {
-        venda.pagamentos.forEach((pagamento: any) => {
+        venda.pagamentos.forEach(pagamento => {
+          // As formas de pagamento no switch já são validadas pelo tipo FormaPagamento
           switch (pagamento.forma_pagamento) {
             case 'dinheiro':
               estatisticas.dinheiro += pagamento.valor;

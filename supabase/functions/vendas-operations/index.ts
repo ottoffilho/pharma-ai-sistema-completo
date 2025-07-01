@@ -1,52 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { validateCriarVenda, validateFinalizarVenda } from '../_shared/validators-vendas.ts'
-
-// Interfaces
-interface CriarVendaRequest {
-  cliente_id?: string;
-  cliente_nome?: string;
-  cliente_documento?: string;
-  cliente_telefone?: string;
-  tipo_venda?: 'MANIPULADO' | 'ALOPATICO' | 'DELIVERY' | 'PBM';
-  origem_id?: string; // ex.: ordem_producao_id quando MANIPULADO
-  itens: Array<{
-    produto_id: string;
-    produto_codigo?: string;
-    produto_nome: string;
-    quantidade: number;
-    preco_unitario: number;
-    preco_total: number;
-    lote_id?: string;
-  }>;
-  subtotal: number;
-  desconto_valor?: number;
-  desconto_percentual?: number;
-  total: number;
-  observacoes?: string;
-}
-
-interface FinalizarVendaRequest {
-  venda_id: string;
-  pagamentos: Array<{
-    forma_pagamento: string;
-    valor: number;
-    bandeira_cartao?: string;
-    numero_autorizacao?: string;
-    codigo_transacao?: string;
-    observacoes?: string;
-  }>;
-  troco?: number;
-}
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  validateCriarVenda,
+  validateFinalizarVenda,
+  CriarVendaRequest,
+  FinalizarVendaRequest,
+} from '../_shared/validators-vendas.ts'
+import { corsHeaders } from "../_shared/cors.ts"
+import { createRateLimiter, RateLimitPresets } from '../_shared/rate-limiter.ts'
+import { logInfo, logError, logSecurity, logDebug } from '../_shared/secure-logger-edge.ts'
+import { SecurityPresets, secureResponse } from '../_shared/security-headers.ts'
 
 serve(async (req) => {
-  // Configurar CORS
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
-  }
-
   // Tratar requisições OPTIONS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -63,19 +28,37 @@ serve(async (req) => {
       auth: { persistSession: false }
     })
 
+    // Implementar rate limiting
+    const rateLimiter = createRateLimiter(RateLimitPresets.vendas, supabase);
+    const rateLimitResponse = await rateLimiter.middleware(req);
+    
+    if (rateLimitResponse) {
+      logSecurity({
+        type: 'rate_limit_exceeded',
+        endpoint: new URL(req.url).pathname
+      }, req);
+      return rateLimitResponse;
+    }
+
     // Verificar autenticação do usuário
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
 
     if (authError || !user) {
-      console.error('Erro de autenticação:', authError)
+      logSecurity({
+        type: 'failed_auth',
+        endpoint: new URL(req.url).pathname,
+        details: { error: authError?.message }
+      }, req);
+
+      logError('Erro de autenticação', authError)
       return new Response(
-        JSON.stringify({ error: 'Não autorizado', details: authError?.message }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
       )
     }
 
-    console.log('Usuário autenticado:', user.id)
+    logDebug('Usuário autenticado', { userId: user.id })
 
     const url = new URL(req.url)
     let action = url.searchParams.get('action')
@@ -102,7 +85,7 @@ serve(async (req) => {
         console.error('Erro ao parsear body:', e)
         return new Response(
           JSON.stringify({ error: 'Body inválido' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
         )
       }
     }
@@ -110,10 +93,10 @@ serve(async (req) => {
     console.log('Action final determinada:', action)
 
     switch (action) {
-      case 'criar-venda':
+      case 'CRIAR_VENDA_PDV':
         return await criarVenda(req, supabase, user.id)
       
-      case 'finalizar-venda':
+      case 'FINALIZAR_VENDA':
         return await finalizarVenda(req, supabase, user.id)
       
       case 'obter-venda':
@@ -122,26 +105,27 @@ serve(async (req) => {
       case 'listar-vendas':
         return await listarVendas(url, supabase)
       
-      case 'cancelar-venda':
+      case 'CANCELAR_VENDA':
         return await cancelarVenda(url, supabase, user.id)
       
       default:
         return new Response(
           JSON.stringify({ error: 'Ação não reconhecida' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
         )
     }
 
   } catch (error) {
-    console.error('Erro na function vendas-operations:', error)
-    return new Response(
-      JSON.stringify({ error: 'Erro interno do servidor' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    logError('Erro na Edge Function vendas-operations', error)
+    const errorResponse = new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
+    return secureResponse(errorResponse);
   }
 })
 
-async function criarVenda(req: Request, supabase: any, userId: string) {
+async function criarVenda(req: Request, supabase: SupabaseClient, userId: string) {
   const corsHeaders = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
@@ -159,7 +143,8 @@ async function criarVenda(req: Request, supabase: any, userId: string) {
     )
   }
 
-  const data = payload as CriarVendaRequest
+  // O payload agora é do tipo CriarVendaRequest graças a validateCriarVenda
+  const data = payload
 
   // Usar diretamente o userId do auth (funciona com a estrutura atual)
   const usuario = { id: userId }
@@ -273,7 +258,7 @@ async function criarVenda(req: Request, supabase: any, userId: string) {
   )
 }
 
-async function finalizarVenda(req: Request, supabase: any, userId: string) {
+async function finalizarVenda(req: Request, supabase: SupabaseClient, userId: string) {
   const corsHeaders = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
@@ -283,190 +268,140 @@ async function finalizarVenda(req: Request, supabase: any, userId: string) {
 
   try {
     const payload = await req.json()
-    console.log('=== FINALIZANDO VENDA ===')
-    console.log('Payload recebido:', JSON.stringify(payload, null, 2))
-    console.log('User ID:', userId)
     
-    // Filtrar apenas os dados necessários para validação
-    const finalizarData = {
-      venda_id: payload.venda_id,
-      pagamentos: payload.pagamentos || [],
-      troco: payload.troco || 0
-    }
+    validateFinalizarVenda(payload)
     
-    console.log('Dados para validação:', JSON.stringify(finalizarData, null, 2))
-    
-    // Validação simples para debug
-    if (!finalizarData.venda_id) {
-      console.log('ERRO: venda_id é obrigatório')
+    const data = payload
+
+    // Verificar se a venda existe e está em rascunho
+    const { data: venda, error: vendaError } = await supabase
+      .from('vendas')
+      .select('*')
+      .eq('id', data.venda_id)
+      .single()
+
+    if (vendaError || !venda) {
       return new Response(
-        JSON.stringify({ error: 'venda_id é obrigatório' }),
+        JSON.stringify({ error: 'Venda não encontrada' }),
+        { status: 404, headers: corsHeaders }
+      )
+    }
+
+    if (venda.status !== 'rascunho') {
+      return new Response(
+        JSON.stringify({ error: 'Venda já foi finalizada ou cancelada' }),
         { status: 400, headers: corsHeaders }
       )
     }
-    
-    if (!Array.isArray(finalizarData.pagamentos)) {
-      console.log('ERRO: pagamentos deve ser um array')
+
+    // Verificar se o total dos pagamentos bate com o total da venda
+    const totalPagamentos = data.pagamentos.reduce((sum, pag) => sum + pag.valor, 0)
+    const totalComTroco = totalPagamentos - (data.troco || 0)
+
+    if (Math.abs(totalComTroco - venda.total) > 0.01) {
       return new Response(
-        JSON.stringify({ error: 'pagamentos deve ser um array' }),
+        JSON.stringify({ error: 'Total dos pagamentos não confere com o total da venda' }),
         { status: 400, headers: corsHeaders }
       )
     }
-    
-    if (finalizarData.pagamentos.length === 0) {
-      console.log('ERRO: Pelo menos uma forma de pagamento é obrigatória')
+
+    // Atualizar status da venda
+    const { error: updateVendaError } = await supabase
+      .from('vendas')
+      .update({
+        status: 'finalizada',
+        status_pagamento: 'pago',
+        troco: data.troco || 0,
+        data_finalizacao: new Date().toISOString()
+      })
+      .eq('id', data.venda_id)
+
+    if (updateVendaError) {
+      console.error('Erro ao finalizar venda:', updateVendaError)
       return new Response(
-        JSON.stringify({ error: 'Pelo menos uma forma de pagamento é obrigatória' }),
-        { status: 400, headers: corsHeaders }
+        JSON.stringify({ error: 'Erro ao finalizar venda' }),
+        { status: 500, headers: corsHeaders }
       )
     }
-    
-    // Validar estrutura dos pagamentos
-    for (let i = 0; i < finalizarData.pagamentos.length; i++) {
-      const pag = finalizarData.pagamentos[i]
-      if (!pag.forma_pagamento || typeof pag.valor !== 'number' || pag.valor <= 0) {
-        console.log(`ERRO: Pagamento ${i} inválido:`, pag)
-        return new Response(
-          JSON.stringify({ error: `Pagamento ${i + 1} inválido: forma_pagamento e valor são obrigatórios` }),
-          { status: 400, headers: corsHeaders }
-        )
-      }
+
+    // Buscar ID do usuário na tabela usuarios
+    const { data: usuarioData, error: usuarioError } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('auth_id', userId)
+      .single()
+
+    if (usuarioError || !usuarioData) {
+      console.error('Erro ao buscar usuário:', usuarioError)
+      return new Response(
+        JSON.stringify({ error: 'Usuário não encontrado na tabela usuarios' }),
+        { status: 404, headers: corsHeaders }
+      )
     }
-    
-    // Comentar validação zod temporariamente para debug
-    // validateFinalizarVenda(finalizarData)
-    
-    const data = finalizarData as FinalizarVendaRequest
 
-  // Verificar se a venda existe e está em rascunho
-  const { data: venda, error: vendaError } = await supabase
-    .from('vendas')
-    .select('*')
-    .eq('id', data.venda_id)
-    .single()
+    const usuarioId = usuarioData.id
+    console.log('ID do usuário na tabela usuarios:', usuarioId)
 
-  if (vendaError || !venda) {
-    return new Response(
-      JSON.stringify({ error: 'Venda não encontrada' }),
-      { status: 404, headers: corsHeaders }
-    )
-  }
+    // Inserir pagamentos
+    const pagamentosVenda = data.pagamentos.map(pag => ({
+      venda_id: data.venda_id,
+      forma_pagamento: pag.forma_pagamento,
+      valor: pag.valor,
+      bandeira_cartao: pag.bandeira_cartao,
+      numero_autorizacao: pag.numero_autorizacao,
+      codigo_transacao: pag.codigo_transacao,
+      observacoes: pag.observacoes,
+      data_pagamento: new Date().toISOString(),
+      usuario_id: usuarioId,
+      proprietario_id: null, // Para desenvolvimento local sem multi-tenant
+      farmacia_id: null      // Para desenvolvimento local sem multi-tenant
+    }))
 
-  if (venda.status !== 'rascunho') {
-    return new Response(
-      JSON.stringify({ error: 'Venda já foi finalizada ou cancelada' }),
-      { status: 400, headers: corsHeaders }
-    )
-  }
+    const { error: pagamentosError } = await supabase
+      .from('pagamentos_venda')
+      .insert(pagamentosVenda)
 
-  // Verificar se o total dos pagamentos bate com o total da venda
-  const totalPagamentos = data.pagamentos.reduce((sum, pag) => sum + pag.valor, 0)
-  const totalComTroco = totalPagamentos - (data.troco || 0)
+    if (pagamentosError) {
+      console.error('Erro ao inserir pagamentos:', pagamentosError)
+      return new Response(
+        JSON.stringify({ error: 'Erro ao processar pagamentos' }),
+        { status: 500, headers: corsHeaders }
+      )
+    }
 
-  if (Math.abs(totalComTroco - venda.total) > 0.01) {
-    return new Response(
-      JSON.stringify({ error: 'Total dos pagamentos não confere com o total da venda' }),
-      { status: 400, headers: corsHeaders }
-    )
-  }
+    // Atualizar estoque dos produtos vendidos
+    const { data: itensVenda } = await supabase
+      .from('itens_venda')
+      .select('produto_id, quantidade, lote_id')
+      .eq('venda_id', data.venda_id)
 
-  // Atualizar status da venda
-  const { error: updateVendaError } = await supabase
-    .from('vendas')
-    .update({
-      status: 'finalizada',
-      status_pagamento: 'pago',
-      troco: data.troco || 0,
-      data_finalizacao: new Date().toISOString()
-    })
-    .eq('id', data.venda_id)
-
-  if (updateVendaError) {
-    console.error('Erro ao finalizar venda:', updateVendaError)
-    return new Response(
-      JSON.stringify({ error: 'Erro ao finalizar venda' }),
-      { status: 500, headers: corsHeaders }
-    )
-  }
-
-  // Buscar ID do usuário na tabela usuarios
-  const { data: usuarioData, error: usuarioError } = await supabase
-    .from('usuarios')
-    .select('id')
-    .eq('auth_id', userId)
-    .single()
-
-  if (usuarioError || !usuarioData) {
-    console.error('Erro ao buscar usuário:', usuarioError)
-    return new Response(
-      JSON.stringify({ error: 'Usuário não encontrado na tabela usuarios' }),
-      { status: 404, headers: corsHeaders }
-    )
-  }
-
-  const usuarioId = usuarioData.id
-  console.log('ID do usuário na tabela usuarios:', usuarioId)
-
-  // Inserir pagamentos
-  const pagamentosVenda = data.pagamentos.map(pag => ({
-    venda_id: data.venda_id,
-    forma_pagamento: pag.forma_pagamento,
-    valor: pag.valor,
-    bandeira_cartao: pag.bandeira_cartao,
-    numero_autorizacao: pag.numero_autorizacao,
-    codigo_transacao: pag.codigo_transacao,
-    observacoes: pag.observacoes,
-    data_pagamento: new Date().toISOString(),
-    usuario_id: usuarioId,
-    proprietario_id: null, // Para desenvolvimento local sem multi-tenant
-    farmacia_id: null      // Para desenvolvimento local sem multi-tenant
-  }))
-
-  const { error: pagamentosError } = await supabase
-    .from('pagamentos_venda')
-    .insert(pagamentosVenda)
-
-  if (pagamentosError) {
-    console.error('Erro ao inserir pagamentos:', pagamentosError)
-    return new Response(
-      JSON.stringify({ error: 'Erro ao processar pagamentos' }),
-      { status: 500, headers: corsHeaders }
-    )
-  }
-
-  // Atualizar estoque dos produtos vendidos
-  const { data: itensVenda } = await supabase
-    .from('itens_venda')
-    .select('produto_id, quantidade, lote_id')
-    .eq('venda_id', data.venda_id)
-
-  for (const item of itensVenda || []) {
-    // Decrementar quantidade no estoque geral
-    await supabase.rpc('decrementar_estoque_produto', {
-      produto_id: item.produto_id,
-      quantidade: item.quantidade
-    })
-
-    // Se tem lote específico, decrementar do lote
-    if (item.lote_id) {
-      await supabase.rpc('decrementar_estoque_lote', {
-        lote_id: item.lote_id,
+    for (const item of itensVenda || []) {
+      // Decrementar quantidade no estoque geral
+      await supabase.rpc('decrementar_estoque_produto', {
+        produto_id: item.produto_id,
         quantidade: item.quantidade
       })
-    }
-  }
 
-  return new Response(
-    JSON.stringify({ 
-      success: true, 
-      message: 'Venda finalizada com sucesso',
-      numero_venda: venda.numero_venda,
-      venda_id: data.venda_id,
-      total: venda.total,
-      troco: data.troco || 0
-    }),
-    { headers: corsHeaders }
-  )
+      // Se tem lote específico, decrementar do lote
+      if (item.lote_id) {
+        await supabase.rpc('decrementar_estoque_lote', {
+          lote_id: item.lote_id,
+          quantidade: item.quantidade
+        })
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Venda finalizada com sucesso',
+        numero_venda: venda.numero_venda,
+        venda_id: data.venda_id,
+        total: venda.total,
+        troco: data.troco || 0
+      }),
+      { headers: corsHeaders }
+    )
 
   } catch (error) {
     console.error('Erro geral na função finalizar venda:', error)
@@ -480,7 +415,7 @@ async function finalizarVenda(req: Request, supabase: any, userId: string) {
   }
 }
 
-async function obterVenda(url: URL, supabase: any) {
+async function obterVenda(url: URL, supabase: SupabaseClient) {
   const corsHeaders = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
@@ -520,7 +455,7 @@ async function obterVenda(url: URL, supabase: any) {
   )
 }
 
-async function listarVendas(url: URL, supabase: any) {
+async function listarVendas(url: URL, supabase: SupabaseClient) {
   const corsHeaders = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
@@ -567,7 +502,7 @@ async function listarVendas(url: URL, supabase: any) {
   )
 }
 
-async function cancelarVenda(url: URL, supabase: any, userId: string) {
+async function cancelarVenda(url: URL, supabase: SupabaseClient, userId: string) {
   const corsHeaders = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',

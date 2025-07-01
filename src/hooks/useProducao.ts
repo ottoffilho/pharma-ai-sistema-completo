@@ -1,45 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-
-// Interfaces para tipagem de dados de produção - Definição local
-export interface OrdemProducao {
-  id: string;
-  numero_ordem: string;
-  status: 'pendente' | 'em_producao' | 'finalizada' | 'cancelada';
-  prioridade: 'baixa' | 'normal' | 'alta' | 'urgente';
-  receita_id?: string;
-  usuario_responsavel_id?: string;
-  farmaceutico_responsavel_id?: string;
-  observacoes_gerais?: string;
-  data_criacao?: string;
-  data_finalizacao?: string;
-  created_at?: string;
-  updated_at?: string;
-  is_deleted?: boolean;
-  proprietario_id?: string;
-  farmacia_id?: string;
-}
-
-export interface StatisticsData {
-  totalOrdens: number;
-  ordensEmProducao: number;
-  ordensAguardando: number;
-  ordensFinalizadasHoje: number;
-  proximoPrazo?: string;
-  ordensDoMes: number;
-  taxaSucesso: number;
-  tempoMedio: number;
-}
-
-export interface OrdemAndamento extends OrdemProducao {
-  progresso?: number;
-  tempoRestante?: string;
-  produto_nome?: string;
-  receitas?: {
-    medicamento_nome?: string;
-  };
-}
+import type { OrdemProducao, StatisticsData, OrdemAndamento } from '@/types/producao';
 
 export const useProducao = () => {
   const [ordens, setOrdens] = useState<OrdemProducao[]>([]);
@@ -76,9 +38,9 @@ export const useProducao = () => {
       const ordensTyped = (data || []) as OrdemProducao[];
       setOrdens(ordensTyped);
       return ordensTyped;
-    } catch (err: any) {
-      console.error('Erro ao buscar ordens:', err);
-      const errorMessage = err.message || 'Erro desconhecido ao carregar ordens';
+    } catch (error) {
+      console.error('Erro ao buscar ordens:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido ao carregar ordens';
       setError(errorMessage);
       
       toast({
@@ -148,8 +110,8 @@ export const useProducao = () => {
       };
 
       setStatistics(newStatistics);
-    } catch (err: any) {
-      console.error('Erro ao calcular estatísticas:', err);
+    } catch (error) {
+      console.error('Erro ao calcular estatísticas:', error);
     }
   };
 
@@ -199,8 +161,8 @@ export const useProducao = () => {
       })) as OrdemAndamento[];
 
       setOrdensAndamento(ordensComProgresso);
-    } catch (err: any) {
-      console.error('Erro ao buscar ordens em andamento:', err);
+    } catch (error) {
+      console.error('Erro ao buscar ordens em andamento:', error);
       // Em caso de erro, define lista vazia em vez de falhar
       setOrdensAndamento([]);
     }
@@ -215,9 +177,10 @@ export const useProducao = () => {
       const ordens = await fetchOrdens();
       await calculateStatistics(ordens);
       await fetchOrdensAndamento();
-    } catch (err: any) {
-      console.error('Erro na inicialização:', err);
-      setError(err.message || 'Erro na inicialização dos dados');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro na inicialização dos dados';
+      console.error('Erro na inicialização:', errorMessage);
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -231,11 +194,12 @@ export const useProducao = () => {
         title: "Dados atualizados",
         description: "Informações de produção foram atualizadas",
       });
-    } catch (err: any) {
-      console.error('Erro ao atualizar dados:', err);
+    } catch (error) {
+      console.error('Erro ao atualizar dados:', error);
+      const errorMessage = error instanceof Error ? error.message : "Falha ao atualizar dados de produção";
       toast({
         title: "Erro ao atualizar",
-        description: "Falha ao atualizar dados de produção",
+        description: errorMessage,
         variant: "destructive",
       });
     }

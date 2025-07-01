@@ -52,6 +52,14 @@ export interface ClienteStats {
   ticket_medio: number;
 }
 
+export interface EstatisticasClienteDetalhes {
+  total_vendas: number;
+  ticket_medio: number;
+  ultima_compra: string | null;
+  produtos_favoritos: string[];
+  freq_compras_mes: number;
+}
+
 export interface ClienteHistoricoCompra {
   id: string;
   numero_venda: string;

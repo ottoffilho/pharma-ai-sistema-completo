@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { ReactNode } from 'react'
 import { render, RenderOptions } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
@@ -96,4 +96,23 @@ export const createMockAuthContext = (overrides: Partial<typeof mockUser> = {}) 
 export const createMockError = (message: string) => ({
   data: null,
   error: { message, details: '', hint: '', code: '500' },
-}) 
+})
+
+// Cria um cliente de query para os testes, com configurações que evitam retentativas
+// para não deixar os testes lentos e imprevisíveis.
+const createTestQueryClient = () => new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false, // Desativa retentativas em caso de falha
+    },
+  },
+});
+
+// Componente Wrapper que provê o QueryClient
+export const createWrapper = () => {
+  const queryClient = createTestQueryClient();
+  // eslint-disable-next-line react/display-name
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}; 

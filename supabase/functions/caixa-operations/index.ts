@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Interfaces
 interface AbrirCaixaRequest {
@@ -12,6 +12,10 @@ interface FecharCaixaRequest {
   valor_final: number;
   observacoes?: string;
 }
+
+type VendaSimples = {
+  total: number;
+};
 
 serve(async (req) => {
   // Configurar CORS
@@ -74,14 +78,15 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Erro na function caixa-operations:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Erro interno do servidor';
     return new Response(
-      JSON.stringify({ error: 'Erro interno do servidor' }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
 
-async function abrirCaixa(req: Request, supabase: any, userId: string) {
+async function abrirCaixa(req: Request, supabase: SupabaseClient, userId: string) {
   const data: AbrirCaixaRequest = await req.json()
 
   // 1. Buscar perfil do usuário para obter farmacia_id
@@ -159,7 +164,7 @@ async function abrirCaixa(req: Request, supabase: any, userId: string) {
   )
 }
 
-async function fecharCaixa(req: Request, supabase: any, userId: string) {
+async function fecharCaixa(req: Request, supabase: SupabaseClient, userId: string) {
   const data: FecharCaixaRequest = await req.json()
 
   // Verificar se o caixa existe e está aberto
@@ -184,7 +189,7 @@ async function fecharCaixa(req: Request, supabase: any, userId: string) {
     .eq('caixa_id', data.caixa_id)
     .eq('status', 'finalizada')
 
-  const totalVendas = vendas?.reduce((sum: number, venda: any) => sum + venda.total, 0) || 0
+  const totalVendas = (vendas as VendaSimples[] | null)?.reduce((sum, venda) => sum + venda.total, 0) || 0
   const valorEsperado = caixa.valor_inicial + totalVendas
   const diferenca = data.valor_final - valorEsperado
 
@@ -226,7 +231,7 @@ async function fecharCaixa(req: Request, supabase: any, userId: string) {
   )
 }
 
-async function obterCaixaAtivo(supabase: any) {
+async function obterCaixaAtivo(supabase: SupabaseClient) {
   const { data: caixaAtivo, error } = await supabase
     .from('abertura_caixa')
     .select(`
@@ -252,7 +257,7 @@ async function obterCaixaAtivo(supabase: any) {
   )
 }
 
-async function historicoOperacoesCaixa(url: URL, supabase: any) {
+async function historicoOperacoesCaixa(url: URL, supabase: SupabaseClient) {
   const limite = parseInt(url.searchParams.get('limite') || '20')
   const offset = parseInt(url.searchParams.get('offset') || '0')
   const dataInicio = url.searchParams.get('data_inicio')
