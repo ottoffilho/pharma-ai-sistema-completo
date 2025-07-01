@@ -2,6 +2,21 @@
 // SERVIÇO DE NOTAS FISCAIS - PHARMA.AI
 // Módulo M10 - Fiscal
 // =====================================================
+//
+// ⚠️  ARQUIVO DEPRECIADO - EM PROCESSO DE REFATORAÇÃO
+// 
+// Este arquivo monolítico de 2400+ linhas está sendo refatorado em arquivos menores:
+// - src/services/notaFiscal/notaFiscal.service.ts (CRUD básico)
+// - src/services/notaFiscal/notaFiscal.import.service.ts (Importação XML)
+// - src/services/notaFiscal/notaFiscal.document.service.ts (DANFE/XML download)
+// - src/services/notaFiscal/notaFiscal.utils.ts (Utilitários)
+// - src/services/notaFiscal/notaFiscal.diagnostics.ts (Diagnósticos)
+// - src/services/produto/produto.classification.service.ts (Classificação)
+//
+// Use: import { funcao } from '@/services/notaFiscal' (novo barrel file)
+// Em vez de: import { funcao } from '@/services/notaFiscalService' (depreciado)
+//
+// =====================================================
 
 import { supabase } from '@/integrations/supabase/client';
 import { TABLES, formatSupabaseError, uploadFile, STORAGE_BUCKETS, downloadFile, getSignedUrl } from './supabase';

@@ -18,7 +18,7 @@ import {
   gerarIdArquivo,
   verificarDuplicata 
 } from '@/utils/validacaoArquivos';
-import { importarXMLNotaFiscal } from '@/services/notaFiscalService';
+import { importarXMLNotaFiscal } from '@/services/notaFiscal';
 
 export interface UseImportacaoNFOptions {
   configuracao?: Partial<ConfiguracaoImportacao>;

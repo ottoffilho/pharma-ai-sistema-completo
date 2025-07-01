@@ -45,7 +45,7 @@ import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { NotaFiscalHeader } from '@/components/notaFiscal/NotaFiscalHeader';
 import { NotaFiscalCards } from '@/components/notaFiscal/NotaFiscalCards';
-import { baixarXMLNotaFiscal, visualizarDANFE } from '@/services/notaFiscalService';
+import { baixarXMLNotaFiscal, visualizarDANFE } from '@/services/notaFiscal';
 
 export default function DetalhesNotaFiscal() {
   const { id } = useParams<{ id: string }>();

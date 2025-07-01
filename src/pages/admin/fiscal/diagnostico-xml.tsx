@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Download, AlertTriangle, CheckCircle, PlayCircle, Wrench } from 'lucide-react';
-import { diagnosticarDownloadsXML, testarDownloadXML } from '@/services/notaFiscalService';
+import { diagnosticarDownloadsXML, testarDownloadXML } from '@/services/notaFiscal/notaFiscal.diagnostics';
 import { AdminPageLayout } from '@/components/layouts/AdminPageLayout';
 
 interface DiagnosticoResultado {

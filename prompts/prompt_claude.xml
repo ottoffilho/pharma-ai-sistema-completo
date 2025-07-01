@@ -1,0 +1,239 @@
+<prompt>
+  <context>
+    <summary>
+      O objetivo desta tarefa é refatorar um arquivo de serviço TypeScript monolítico, `src/services/notaFiscalService.ts`, que cresceu para mais de 2400 linhas. O arquivo atualmente mistura múltiplas responsabilidades, tornando a manutenção, o teste e a legibilidade difíceis. A refatoração consistirá em dividir este arquivo em múltiplos arquivos menores e focados, cada um com uma única responsabilidade, sem alterar a lógica de negócio ou a funcionalidade existente.
+    </summary>
+    <file_path>src/services/notaFiscalService.ts</file_path>
+  </context>
+
+  <analysis_of_current_situation>
+    <problem>
+      O arquivo `src/services/notaFiscalService.ts` viola o Princípio da Responsabilidade Única (SRP). Ele contém lógica para:
+      1.  **CRUD de Notas Fiscais:** Operações básicas de banco de dados (Create, Read, Update, Delete).
+      2.  **Processamento de Importação de XML:** Orquestração complexa da leitura e importação de arquivos NF-e.
+      3.  **Lógica de Classificação de Produtos:** Regras de negócio para categorizar produtos com base em NCM e nome.
+      4.  **Geração de Documentos:** Criação de HTML para DANFE e gerenciamento de downloads de arquivos XML.
+      5.  **Utilitários e Diagnósticos:** Funções de validação e scripts de teste/diagnóstico.
+    </problem>
+    <responsibilities_map>
+      <responsibility name="CRUD de Notas Fiscais">
+        <function>buscarNotasFiscais</function>
+        <function>buscarNotaFiscalPorId</function>
+        <function>buscarNotaFiscalPorChave</function>
+        <function>criarNotaFiscal</function>
+        <function>atualizarNotaFiscal</function>
+        <function>buscarItensNotaFiscal</function>
+        <function>criarItemNotaFiscal</function>
+      </responsibility>
+      <responsibility name="Processamento de Importação de XML">
+        <function>importarXMLNotaFiscal</function>
+        <function>processarXMLNFe</function>
+        <function>extrairDadosFornecedor</function>
+        <function>extrairDadosItem</function>
+        <function>importarFornecedorDoXML</function>
+        <function>processarProdutosDoXML</function>
+      </responsibility>
+      <responsibility name="Lógica de Classificação de Produtos">
+        <function>limparNomeProduto</function>
+        <function>normalizarUnidadeEQuantidade</function>
+        <function>calcularEstoqueMinimoInteligente</function>
+        <function>calcularEstoqueMaximoInteligente</function>
+        <function>classificarCategoriaProduto</function>
+      </responsibility>
+      <responsibility name="Geração e Manipulação de Documentos">
+        <function>baixarXMLNotaFiscal</function>
+        <function>visualizarDANFE</function>
+        <function>gerarHTMLDANFE</function>
+      </responsibility>
+      <responsibility name="Utilitários e Diagnósticos">
+        <function>validarChaveAcesso</function>
+        <function>testarClassificacaoAlopaticos</function>
+        <function>analisarPotencialAlopatico</function>
+        <function>analisarXMLParaNovosAlopaticos</function>
+        <function>testarClassificacaoEmbalagens</function>
+        <function>testarDownloadXML</function>
+        <function>diagnosticarDownloadsXML</function>
+      </responsibility>
+    </responsibilities_map>
+  </analysis_of_current_situation>
+
+  <refactoring_plan>
+    <objective>
+      Dividir o arquivo `src/services/notaFiscalService.ts` em arquivos menores e com responsabilidade única, melhorando a organização e a manutenibilidade do código. A funcionalidade externa não deve ser alterada.
+    </objective>
+    <new_file_structure>
+      <directory path="src/services/notaFiscal/">
+        <file name="notaFiscal.service.ts">
+          <description>Conterá as funções de CRUD para Notas Fiscais.</description>
+        </file>
+        <file name="notaFiscal.import.service.ts">
+          <description>Conterá toda a lógica de importação de XML da NF-e.</description>
+        </file>
+        <file name="notaFiscal.document.service.ts">
+          <description>Conterá as funções para gerar DANFE e baixar arquivos XML.</description>
+        </file>
+        <file name="notaFiscal.utils.ts">
+          <description>Conterá funções utilitárias puras, como a validação de chave de acesso.</description>
+        </file>
+        <file name="notaFiscal.diagnostics.ts">
+          <description>Conterá as funções de teste e diagnóstico.</description>
+        </file>
+        <file name="index.ts">
+          <description>Um barrel file para exportar todas as funções públicas dos novos serviços, garantindo que as importações existentes no projeto não quebrem.</description>
+        </file>
+      </directory>
+      <directory path="src/services/produto/">
+        <file name="produto.classification.service.ts">
+          <description>Conterá a lógica de classificação de produtos, pois é uma regra de negócio de domínio de produto.</description>
+        </file>
+      </directory>
+    </new_file_structure>
+  </refactoring_plan>
+
+  <instructions>
+    <step number="1" description="Crie os novos diretórios e arquivos">
+      <action>Crie o diretório `src/services/notaFiscal`.</action>
+      <action>Crie o diretório `src/services/produto` se ele não existir.</action>
+      <action>Crie os seguintes arquivos vazios:
+        - `src/services/notaFiscal/notaFiscal.service.ts`
+        - `src/services/notaFiscal/notaFiscal.import.service.ts`
+        - `src/services/notaFiscal/notaFiscal.document.service.ts`
+        - `src/services/notaFiscal/notaFiscal.utils.ts`
+        - `src/services/notaFiscal/notaFiscal.diagnostics.ts`
+        - `src/services/notaFiscal/index.ts`
+        - `src/services/produto/produto.classification.service.ts`
+      </action>
+    </step>
+
+    <step number="2" description="Mova o conteúdo do arquivo original para os novos arquivos">
+      
+      <!-- Bloco 1: Lógica de Classificação de Produto -->
+      <move_block>
+        <source_file>src/services/notaFiscalService.ts</source_file>
+        <destination_file>src/services/produto/produto.classification.service.ts</destination_file>
+        <content description="Mova as seguintes funções e adicione as importações necessárias. Exporte cada função.">
+          - `limparNomeProduto`
+          - `normalizarUnidadeEQuantidade`
+          - `calcularEstoqueMinimoInteligente`
+          - `calcularEstoqueMaximoInteligente`
+          - `classificarCategoriaProduto`
+        </content>
+        <imports_needed>
+          - Nenhuma dependência externa específica além de tipos primitivos.
+        </imports_needed>
+      </move_block>
+
+      <!-- Bloco 2: Utilitários da Nota Fiscal -->
+      <move_block>
+        <source_file>src/services/notaFiscalService.ts</source_file>
+        <destination_file>src/services/notaFiscal/notaFiscal.utils.ts</destination_file>
+        <content description="Mova a função de validação. Exporte-a.">
+          - `validarChaveAcesso`
+        </content>
+        <imports_needed>
+          - Nenhuma dependência externa.
+        </imports_needed>
+      </move_block>
+      
+      <!-- Bloco 3: Funções de Diagnóstico -->
+      <move_block>
+        <source_file>src/services/notaFiscalService.ts</source_file>
+        <destination_file>src/services/notaFiscal/notaFiscal.diagnostics.ts</destination_file>
+        <content description="Mova todas as funções de teste e diagnóstico. Exporte cada uma. Elas podem ter dependências dos outros novos serviços.">
+          - `testarClassificacaoAlopaticos`
+          - `analisarPotencialAlopatico`
+          - `analisarXMLParaNovosAlopaticos`
+          - `testarClassificacaoEmbalagens`
+          - `testarDownloadXML`
+          - `diagnosticarDownloadsXML`
+        </content>
+        <imports_needed>
+          - `supabase` client, tipos de `database`, e outros serviços como `ProdutoService`, etc.
+        </imports_needed>
+      </move_block>
+
+      <!-- Bloco 4: Funções de Documentos (DANFE/XML) -->
+      <move_block>
+        <source_file>src/services/notaFiscalService.ts</source_file>
+        <destination_file>src/services/notaFiscal/notaFiscal.document.service.ts</destination_file>
+        <content description="Mova as funções relacionadas a documentos. Exporte as funções públicas.">
+          - `baixarXMLNotaFiscal` (exportar)
+          - `visualizarDANFE` (exportar)
+          - `gerarHTMLDANFE` (função auxiliar, não precisa exportar)
+        </content>
+        <imports_needed>
+          - `supabase` client, `TABLES`, `downloadFile`, `logger`, tipos de `database`.
+        </imports_needed>
+      </move_block>
+      
+      <!-- Bloco 5: Serviço de Importação de XML -->
+      <move_block>
+        <source_file>src/services/notaFiscalService.ts</source_file>
+        <destination_file>src/services/notaFiscal/notaFiscal.import.service.ts</destination_file>
+        <content description="Mova toda a lógica de importação. Apenas 'importarXMLNotaFiscal' precisa ser pública.">
+          - `importarXMLNotaFiscal` (exportar)
+          - `processarXMLNFe` (auxiliar)
+          - `extrairDadosFornecedor` (auxiliar)
+          - `extrairDadosItem` (auxiliar)
+          - `importarFornecedorDoXML` (auxiliar)
+          - `processarProdutosDoXML` (auxiliar)
+          - `getTextContent` (auxiliar)
+        </content>
+        <imports_needed>
+          - `supabase` client, `TABLES`, `uploadFile`, `logger`, `FornecedorService`, `ProdutoService`, `MarkupService`, `loteService`, e os tipos de `database`.
+          - A função `processarProdutosDoXML` precisará importar `classificarCategoriaProduto` de `src/services/produto/produto.classification.service.ts`.
+        </imports_needed>
+      </move_block>
+      
+      <!-- Bloco 6: Serviço Principal de CRUD -->
+      <move_block>
+        <source_file>src/services/notaFiscalService.ts</source_file>
+        <destination_file>src/services/notaFiscal/notaFiscal.service.ts</destination_file>
+        <content description="Mova as funções de CRUD. Todas devem ser exportadas.">
+          - `buscarNotasFiscais`
+          - `buscarNotaFiscalPorId`
+          - `buscarNotaFiscalPorChave`
+          - `criarNotaFiscal`
+          - `atualizarNotaFiscal`
+          - `buscarItensNotaFiscal`
+          - `criarItemNotaFiscal`
+        </content>
+        <imports_needed>
+          - `supabase` client, `TABLES`, `formatSupabaseError`, `logger`, e os tipos de `database`.
+        </imports_needed>
+      </move_block>
+
+    </step>
+    
+    <step number="3" description="Crie o Barrel File para exportação centralizada">
+      <action file="src/services/notaFiscal/index.ts">
+        Popule este arquivo para exportar todas as funções públicas dos novos serviços criados. Isso garantirá compatibilidade com o resto do código.
+        <example>
+          export * from './notaFiscal.service';
+          export * from './notaFiscal.import.service';
+          export * from './notaFiscal.document.service';
+          export * from './notaFiscal.utils';
+          // Não exporte os diagnósticos por padrão
+        </example>
+      </action>
+    </step>
+    
+    <step number="4" description="Atualize as importações no projeto">
+      <action>
+        Busque em todo o projeto por importações que vêm de `'@/services/notaFiscalService'`.
+        Altere essas importações para apontar para o novo barrel file: `'@/services/notaFiscal'`.
+        Como os nomes das funções exportadas são os mesmos, o resto do código não deve quebrar.
+      </action>
+    </step>
+    
+    <step number="5" description="Exclua o arquivo original">
+      <action>
+        Após mover todo o conteúdo e verificar que não há mais código útil no arquivo original, exclua o arquivo `src/services/notaFiscalService.ts`.
+      </action>
+    </step>
+    
+    <final_check>
+      Verifique se o projeto compila sem erros após a refatoração. O comportamento da aplicação não deve ter mudado.
+    </final_check>
+  </instructions>
+</prompt>

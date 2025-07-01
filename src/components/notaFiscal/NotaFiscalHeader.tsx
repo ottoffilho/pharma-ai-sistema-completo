@@ -14,7 +14,7 @@ import {
   Calendar,
   Building2
 } from 'lucide-react';
-import { baixarXMLNotaFiscal, visualizarDANFE } from '@/services/notaFiscalService';
+import { baixarXMLNotaFiscal, visualizarDANFE } from '@/services/notaFiscal';
 import { toast } from 'sonner';
 
 interface NotaFiscalHeaderProps {

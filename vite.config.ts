@@ -2,15 +2,26 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
+import dotenv from "dotenv";
+
+// Carregar variáveis de ambiente explicitamente
+dotenv.config();
 
 // Validação de variáveis de ambiente críticas
 function validateEnvironment(mode: string) {
+  console.log('🔍 Verificando variáveis de ambiente...');
+  console.log('📄 VITE_SUPABASE_URL:', process.env.VITE_SUPABASE_URL ? 'DEFINIDA' : 'NÃO DEFINIDA');
+  console.log('🔑 VITE_SUPABASE_ANON_KEY:', process.env.VITE_SUPABASE_ANON_KEY ? 'DEFINIDA' : 'NÃO DEFINIDA');
+  
   const requiredVars = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
   const missing = requiredVars.filter(key => !process.env[key]);
   
   if (missing.length > 0) {
+    console.error('❌ Variáveis de ambiente faltando:', missing);
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
+
+  console.log('✅ Todas as variáveis de ambiente necessárias estão definidas!');
 
   // Validações de segurança
   if (mode === 'production') {
